@@ -38,13 +38,48 @@ const HomePage = () => {
   }
 
   const callJsService = (value: string) => {
-    window.webOS.service.request('luna://com.uneekor.app.service/', {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
       method: 'hello',
       parameters: { name: value },
       onFailure: showFailure,
       onSuccess: showSuccess,
     });
   };
+
+  function wsServerOn() {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'wsServerOn',
+      parameters: 'test',
+      // parameters: undefined,
+      onFailure: showFailure,
+      onSuccess: (res: { reply: string }) => {
+        console.log('wsServerOn res --> ', res);
+      },
+    });
+  }
+  
+  function serviceOn() {
+    console.log('call my heartbeat service');
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'serviceOn',
+      parameters: 'test',
+      // parameters: undefined,
+      onFailure: showFailure,
+      onSuccess: (res: { reply: string }) => {
+        console.log('heartbeat res --> ', res);
+      },
+    });
+
+    // const url = 'luna://com.hojeong.app.service/serviceOn';
+    // const params = {};
+    // bridge.onservicecallback = (msg) => {
+    //   console.log(msg);
+    //   let res = JSON.parse(msg);
+    //   document.getElementById('txt_msg').innerHTML = res.Response;
+    // };
+
+    // bridge.call(url, JSON.stringify(params));
+  }
 
   return (
     <div className="font-secondary p-4">
@@ -126,6 +161,18 @@ const HomePage = () => {
           <Button onClick={() => callJsService(value)}>js-service 호출</Button>
         </div>
         <div>{res?.message}</div>
+      </div>
+
+      <div>
+        <h1 className="text-3xl mt-5 border-t-[1px] p-2">
+          JS Service Websocket Test
+        </h1>
+        <button id="wsServerOn" onClick={wsServerOn}>
+          WS Server
+        </button>
+        <button id="serviceOn" onClick={serviceOn}>
+          heartbeat serviceOn
+        </button>
       </div>
     </div>
   );
