@@ -1,5 +1,5 @@
 {
-  "name": "com.uneekor.app.service",
+  "name": "com.hojeong.app.service",
   "version": "1.0.0",
   "description": "Helloworld service",
   "main": "helloworld_service.js",
@@ -7,5 +7,8 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "",
-  "license": "BSD"
+  "license": "BSD",
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
 }

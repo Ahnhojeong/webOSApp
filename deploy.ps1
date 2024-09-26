@@ -1,14 +1,14 @@
 # 도움말 메시지 함수
 function Show-Usage {
-    Write-Host ">> Usage: .\deploy.ps1 {DEVICE_NAME} {APP_ID} {APP_VERSION} {VENDOR_NAME} {APP_TITLE}"
-    Write-Host ">> Example: .\deploy.ps1 stanbyme com.uneekor.app 1.0.0 'uneekor' 'uneekor test app'"
-    exit 1
+  Write-Host ">> Usage: .\deploy.ps1 {DEVICE_NAME} {APP_ID} {APP_VERSION} {VENDOR_NAME} {APP_TITLE}"
+  Write-Host ">> Example: .\deploy.ps1 stanbyme com.hojeong.app 1.0.0 'hojeong' 'hojeong test app'"
+  exit 1
 }
 
 # 매개변수 유효성 검사
 if ($args.Count -ne 5) {
-    Write-Host ">> Error: Incorrect number of arguments."
-    Show-Usage
+  Write-Host ">> Error: Incorrect number of arguments."
+  Show-Usage
 }
 
 # 매개변수 할당
@@ -49,7 +49,7 @@ $appInfo = @"
     "title": "$APP_TITLE",
     "icon": "icon.png",
     "allowVideoCapture": true,
-    "requiredPermissions": [ "time.query", "activity.operation", "databse.operation" ],
+    "requiredPermissions": [ "time.query", "activity.operation", "databse.operation", "com.heartbeat.app.service.group" ],
     "supportTouchMode": "full"
 }
 "@
@@ -66,11 +66,11 @@ Copy-Item ..\icon.png .\icon.png
 # 애플리케이션 패키징
 Write-Host ">> Packaging the application..."
 if (ares-package . -o ..\IPK) {
-    Write-Host ">> Package created successfully."
+  Write-Host ">> Package created successfully."
 }
 else {
-    Write-Host ">> Error creating package."
-    exit 1
+  Write-Host ">> Error creating package."
+  exit 1
 }
 
 # IPK directory로 변경
@@ -80,30 +80,30 @@ Write-Host ">> Changed to IPK directory."
 # 기존 앱 삭제
 Write-Host ">> Removing existing installation of the app."
 if (ares-install -d $DEVICE_NAME -r $APP_ID) {
-    Write-Host ">> Existing app removed successfully."
+  Write-Host ">> Existing app removed successfully."
 }
 else {
-    Write-Host ">> Error occurred while trying to remove existing app. The app may not be installed."
+  Write-Host ">> Error occurred while trying to remove existing app. The app may not be installed."
 }
 
 # 새 패키지 설치
 Write-Host ">> Installing new package..."
 if (ares-install -d $DEVICE_NAME "${APP_ID}_${APP_VERSION}_all.ipk") {
-    Write-Host ">> Package installed successfully."
+  Write-Host ">> Package installed successfully."
 }
 else {
-    Write-Host ">> Error installing package. No matched device found: $DEVICE_NAME"
-    exit 1
+  Write-Host ">> Error installing package. No matched device found: $DEVICE_NAME"
+  exit 1
 }
 
 # 앱 실행
 Write-Host ">> Launching the app..."
 if (ares-launch -s '6.0' -sp $SIMULATOR_PATH $BUILD_PATH) {
-    Write-Host ">> App launched successfully."
+  Write-Host ">> App launched successfully."
 }
 else {
-    Write-Host ">> Error launching app. The app may not be installed. Please check the list by running 'ares-install -l'."
-    exit 1
+  Write-Host ">> Error launching app. The app may not be installed. Please check the list by running 'ares-install -l'."
+  exit 1
 }
 
 # 디렉토리 변경

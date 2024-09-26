@@ -1,9 +1,9 @@
 {
-  "id": "com.uneekor.app.service",
+  "id": "com.hojeong.app.service",
   "description": "HelloWorld Service",
   "services": [
     {
-      "name": "com.uneekor.app.service"
+      "name": "com.hojeong.app.service"
     }
   ]
 }

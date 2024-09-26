@@ -1,5 +1,5 @@
 {
-  "id": "com.uneekor.app",
+  "id": "com.hojeong.app",
   "version": "1.0.0",
   "vendor": "My Company",
   "type": "web",
@@ -7,5 +7,11 @@
   "title": "webos-app",
   "icon": "logo192.png",
   "largeIcon": "logo512.png",
-  "serviceList": ["file:///"]
+  "serviceList": ["file:///"],
+  "requiredPermissions": [
+    "time.query",
+    "activity.operation",
+    "notification.operation",
+    "com.hojeong.app.service.group"
+  ]
 }

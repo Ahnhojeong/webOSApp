@@ -22,7 +22,7 @@ declare global {
 }
 
 export function displayReponse(value: string) {
-  return window.webOS.service.request('luna://com.uneekor.app.service/', {
+  return window.webOS.service.request('luna://com.hojeong.app.service/', {
     method: 'hello',
     parameters: { name: value },
     onFailure: showFailure,
