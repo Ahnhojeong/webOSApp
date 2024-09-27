@@ -46,7 +46,6 @@ service.register('/config/setGreeting', function (message) {
 const WebSocketServer = require('ws').WebSocketServer;
 const port = 9000;
 const logHeader = `[${pkgInfo.name}]`;
-let wss = null;
 
 function handleMessage(message) {
   // 메시지 로직 처리
@@ -56,25 +55,14 @@ function handleMessage(message) {
 // ==== Websocket Server Open + Heartbeat ====
 service.register('serviceOn', (message) => {
   console.log(logHeader, message);
-  if (!wss) {
-    wss = new WebSocketServer({
-      port: port,
-    });
-  }
+
+  const wss = new WebSocketServer({
+    port: port,
+  });
 
   wss.on('connection', (ws) => {
     ws.on('message', handleMessage);
     console.log('Someone has been connected', message);
-
-    ws.on('error', (error) => {
-      // 에러 시
-      console.error(error);
-    });
-    ws.on('close', () => {
-      // 연결 종료 시
-      console.log('클라이언트 접속 해제');
-      clearInterval(ws.interval);
-    });
 
     ws.interval = setInterval(() => {
       // 3초마다 클라이언트로 메시지 전송
@@ -105,21 +93,82 @@ service.register('serviceOn', (message) => {
     }
   }, 500);
 
+  // heartbeat 구독
+  const sub = service.subscribe('luna://com.hojeong.app.service/heartbeat', {
+    subscribe: true,
+  });
+  const heartbeatMax = 120;
+  let heartbeatCnt = 0;
+  sub.on('response', function (msg) {
+    console.log('heartbeat 구독', JSON.stringify(msg.payload));
+    if (++heartbeatCnt > heartbeatMax) {
+      sub.cancel();
+      setTimeout(function () {
+        console.log(heartbeatMax + ' responses received, exiting...');
+        process.exit(0);
+      }, 1000);
+    }
+  });
+
   message.respond({
     returnValue: true,
     Response: 'serviceOn has been started.',
   });
 });
 
-// ==== Websocket Server Close ====
-service.register('serviceOff', (message) => {
-  if (wss) {
-    wss.close();
-  }
-  wss = null;
+// === Heartbeat  ===
+const subscriptions = {};
+let heartbeatinterval;
 
-  message.respond({
-    returnValue: true,
-    Response: 'serviceOff.',
-  });
+let x = 1;
+function createHeartBeatInterval() {
+  if (heartbeatinterval) {
+    return;
+  }
+  console.log(logHeader, 'create_heartbeatinterval');
+  heartbeatinterval = setInterval(function () {
+    sendResponses();
+  }, 1000);
+}
+
+// send responses to each subscribed client
+function sendResponses() {
+  console.log(logHeader, 'send_response');
+  console.log(
+    'Sending responses, subscription count=' +
+      Object.keys(subscriptions).length,
+  );
+  for (const i in subscriptions) {
+    if (Object.prototype.hasOwnProperty.call(subscriptions, i)) {
+      const s = subscriptions[i];
+      s.respond({
+        returnValue: true,
+        event: 'beat ' + x,
+      });
+    }
+  }
+  x++;
+}
+
+var heartbeat = service.register('heartbeat');
+heartbeat.on('request', function (message) {
+  message.respond({ event: 'beat' }); // initial response
+  console.log(logHeader, 'SERVICE_METHOD_CALLED:/heartbeat');
+
+  if (message.isSubscription) {
+    subscriptions[message.uniqueToken] = message; //add message to "subscriptions"
+    if (!heartbeatinterval) {
+      createHeartBeatInterval();
+    }
+  }
+});
+heartbeat.on('cancel', function (message) {
+  delete subscriptions[message.uniqueToken]; // remove message from "subscriptions"
+  var keys = Object.keys(subscriptions);
+  if (keys.length === 0) {
+    // count the remaining subscriptions
+    console.log('no more subscriptions, canceling interval');
+    clearInterval(heartbeatinterval);
+    heartbeatinterval = undefined;
+  }
 });

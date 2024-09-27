@@ -92,6 +92,27 @@ const HomePage = () => {
     });
   }
 
+  function serviceOff() {
+    console.log('call websocket server close');
+    // service.current.cancel();
+    if (ws.current) {
+      ws.current.close();
+      setWsOpen(false);
+    }
+    // window.webOS.service.request('luna://com.hojeong.app.service/', {
+    //   method: 'serviceOff',
+    //   parameters: {},
+    //   onFailure: (err) => {
+    //     console.log('serviceOn cancel error ::', err);
+    //   },
+    //   onSuccess: (res: { reply: string }) => {
+    //     console.log('serviceOff cancel res ::', res);
+    //     setWsOpen(false);
+    //   },
+    //   subscribe: false,
+    // });
+  }
+
   return (
     <div className="font-secondary p-4">
       <div>
@@ -181,6 +202,9 @@ const HomePage = () => {
         <div className="flex flex-col w-60">
           <Button id="serviceOn" onClick={serviceOn} className="mb-4">
             Websocker ON
+          </Button>
+          <Button id="serviceOff" onClick={serviceOff}>
+            Websocker OFF
           </Button>
         </div>
       </div>
