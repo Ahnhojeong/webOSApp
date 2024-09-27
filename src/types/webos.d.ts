@@ -6,6 +6,17 @@ interface WebOSService {
       parameters: any;
       onSuccess: (response: any) => void;
       onFailure: (error: any) => void;
+      subscribe?: boolean;
+    },
+  ) => void;
+  cancel: (
+    url: string,
+    options: {
+      method: string;
+      parameters: any;
+      onSuccess: (response: any) => void;
+      onFailure: (error: any) => void;
+      subscribe?: boolean;
     },
   ) => void;
 }
