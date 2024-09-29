@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useWebsocket } from '@/context/WebsocketContext';
 import { SHOT_DATA } from '@/utils/constant/shotData';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const WS_URL = 'ws://192.168.1.65:9000'; // Websocket URL (Port를 제외한 IP는 webOS 기기의 IP를 입력해주세요.)
 
@@ -76,21 +76,45 @@ const HomePage = () => {
     }
   }, [wsOpen]);
 
+  const callService = useRef<any>(null);
+
   function serviceOn() {
     console.log('call websocket server open');
-    window.webOS.service.request('luna://com.hojeong.app.service/', {
-      method: 'serviceOn',
-      parameters: {},
-      onFailure: (err) => {
-        console.log('serviceOn error ::', err);
+    callService.current = window.webOS.service.request(
+      'luna://com.hojeong.app.service/',
+      {
+        method: 'serviceOn',
+        parameters: {},
+        onFailure: (err) => {
+          console.log('serviceOn error ::', err);
+        },
+        onSuccess: (res: { reply: string }) => {
+          console.log('serviceOn res ::', res);
+          setWsOpen(true);
+        },
+        subscribe: true,
       },
-      onSuccess: (res: { reply: string }) => {
-        console.log('serviceOn res ::', res);
-        setWsOpen(true);
-      },
-      subscribe: true,
-    });
+    );
   }
+
+  const serviceOff = useCallback(() => {
+    if (callService.current) {
+      console.log('cancel websocket server');
+      callService.current.cancel();
+
+      window.webOS.service.request('luna://com.hojeong.app.service/', {
+        method: 'serviceOff',
+        parameters: {},
+        onFailure: (err) => {
+          console.log('serviceOff error ::', err);
+        },
+        onSuccess: (res) => {
+          console.log('serviceOff res ::', res);
+          setWsOpen(false);
+        },
+      });
+    }
+  }, [callService]);
 
   return (
     <div className="font-secondary p-4">
@@ -181,6 +205,9 @@ const HomePage = () => {
         <div className="flex flex-col w-60">
           <Button id="serviceOn" onClick={serviceOn} className="mb-4">
             Websocker ON
+          </Button>
+          <Button id="serviceOff" onClick={serviceOff}>
+            Websocker OFF
           </Button>
         </div>
       </div>

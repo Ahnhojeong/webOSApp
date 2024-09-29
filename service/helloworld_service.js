@@ -53,36 +53,60 @@ function handleMessage(message) {
   console.log('handleMessage :: ', message);
 }
 
-// ==== Websocket Server Open + Heartbeat ====
-service.register('serviceOn', (message) => {
-  console.log(logHeader, message);
-  if (!wss) {
-    wss = new WebSocketServer({
-      port: port,
-    });
+function createWebSocketServer() {
+  if (wss) {
+    console.log(logHeader, 'WebSocket server already exists');
+    return;
   }
 
-  wss.on('connection', (ws) => {
-    ws.on('message', handleMessage);
-    console.log('Someone has been connected', message);
+  wss = new WebSocketServer({ port: port });
 
+  wss.on('connection', (ws) => {
+    console.log(logHeader, 'New client connected');
+
+    ws.on('message', handleMessage);
+
+    // 에러 시
     ws.on('error', (error) => {
-      // 에러 시
-      console.error(error);
+      console.error(logHeader, 'WebSocket error:', error);
     });
+
+    // 연결 종료 시
     ws.on('close', () => {
-      // 연결 종료 시
-      console.log('클라이언트 접속 해제');
+      console.log(logHeader, 'Client disconnected');
       clearInterval(ws.interval);
     });
 
     ws.interval = setInterval(() => {
-      // 3초마다 클라이언트로 메시지 전송
+      // 3초 마다 클라이언트에게 메시지 전송
       if (ws.readyState === ws.OPEN) {
         ws.send('서버에서 클라이언트로 메시지를 보냅니다.');
       }
     }, 3000);
   });
+
+  console.log(logHeader, `WebSocket server is running on port ${port}`);
+}
+
+function closeWebSocketServer() {
+  if (wss) {
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.close();
+      }
+    });
+
+    wss.close(() => {
+      console.log(logHeader, 'WebSocket server closed');
+      wss = null;
+    });
+  }
+}
+
+// ==== Websocket Server Open + Heartbeat ====
+service.register('serviceOn', (message) => {
+  console.log(logHeader, 'serviceOn called');
+  createWebSocketServer();
 
   // Toast Sample
   const max = 5;
@@ -113,13 +137,12 @@ service.register('serviceOn', (message) => {
 
 // ==== Websocket Server Close ====
 service.register('serviceOff', (message) => {
-  if (wss) {
-    wss.close();
-  }
-  wss = null;
+  console.log(logHeader, 'serviceOff called');
+
+  closeWebSocketServer();
 
   message.respond({
     returnValue: true,
-    Response: 'serviceOff.',
+    Response: 'serviceOff has been completed.',
   });
 });
