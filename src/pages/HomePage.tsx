@@ -1,16 +1,17 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { useWebsocket } from '@/context/WebsocketContext';
-import { SHOT_DATA } from '@/utils/constant/shotData';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-const WS_URL = 'ws://192.168.1.65:9000'; // Websocket URL (Port를 제외한 IP는 webOS 기기의 IP를 입력해주세요.)
+const WS_URL = 'ws://localhost:9000'; // Websocket URL (Port를 제외한 IP는 webOS 기기의 IP를 입력해주세요.)
 
 const HomePage = () => {
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const { subscribeData, shotData } = useWebsocket(); // WebSocket - ShotData
   const [res, setRes] = useState<{ returnValue: boolean; message: string }>(); // JS-service Sample
+  const [resNotify, setResNotify] = useState<{
+    returnValue: boolean;
+    message: string;
+  }>();
   const [value, setValue] = useState<string>(''); // JS-service request params Sample
 
   const onChangeValue = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -26,6 +27,15 @@ const HomePage = () => {
     return res;
   }
 
+  function showSuccessNotify(res: { returnValue: boolean; data: string }) {
+    console.log('showSuccess res -> ', res);
+    setResNotify({
+      returnValue: res.returnValue,
+      message: res.data,
+    });
+    return res;
+  }
+
   function showFailure(err: {
     errorCode: number;
     errorText: string;
@@ -33,6 +43,19 @@ const HomePage = () => {
   }) {
     console.log('showFailure err -> ', err);
     setRes({
+      returnValue: err.returnValue,
+      message: err.errorText,
+    });
+    return err;
+  }
+
+  function showFailureNotify(err: {
+    errorCode: number;
+    errorText: string;
+    returnValue: boolean;
+  }) {
+    console.log('showFailure err -> ', err);
+    setResNotify({
       returnValue: err.returnValue,
       message: err.errorText,
     });
@@ -116,9 +139,133 @@ const HomePage = () => {
     }
   }, [callService]);
 
+  const callJsServiceUdp = (value: string) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'udpClient/' + value,
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+      subscribe: true,
+    });
+  };
+  const callJsServiceTcp = (value: string) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/' + value,
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+
+  const callJsServiceTcpRequest = (value: string) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClientRequest/' + value,
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceTcpNotify = (value: string) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClientNotify/' + value,
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceTcpStart = () => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/start',
+      parameters: { ip: '' }, // ip주소 설정, 빈칸일 경우 udpClient에서 가장 최신 찾은 기기 연결
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+
+  const callJsServiceTcpSendPacketInit = () => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketInit',
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceTcpSendPacketActCode = () => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketActCode',
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceTcpSendPacketSetWifilist = () => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketSetWifilist',
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceTcpSendPacketGetWifilist = () => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketGetWifilist',
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceTcpSendPacketSetWifi = () => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketSetWifi',
+      parameters: {
+        encryption: 'on',
+        ssid: 'Creatz_Newbiz_5G',
+        password: 'passion1869!',
+        type: 1,
+      },
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+
+  const callJsServiceTcpGetNotifyPacket = () => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/getNotifyPacket',
+      parameters: {},
+      onFailure: showFailureNotify,
+      onSuccess: showSuccessNotify,
+    });
+  };
+
+  const callJsServiceWifiTest = () => {
+    window.webOS.service.request('luna://com.webos.service.wifi', {
+      method: 'findnetworks',
+      parameters: { interval: 15000 },
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+
+  const callJsServiceWifiTest2 = () => {
+    window.webOS.service.request('luna://com.webos.service.wifi', {
+      method: 'getNetworks',
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceWifiTest3 = () => {
+    window.webOS.service.request('luna://com.webos.service.wifi', {
+      method: 'scan',
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+
   return (
     <div className="font-secondary p-4">
-      <div>
+      {/* <div>
         <h1 className="text-3xl mt-5 border-t-[1px] p-2">Shot Data List</h1>
         <h1>Device: {subscribeData.source}</h1>
         <div className="flex">
@@ -175,11 +322,11 @@ const HomePage = () => {
 
         <div>
           <h1>Ball Image</h1>
-          <div>Images...</div> {/* image 받아와서 렌더링 필요 */}
+          <div>Images...</div>
           <h1>Club Image</h1>
-          <div>Images...</div> {/* image 받아와서 렌더링 필요 */}
+          <div>Images...</div>
         </div>
-      </div>
+      </div> */}
 
       <div>
         <h1 className="text-3xl mt-5 border-t-[1px] p-2">JS Service Sample</h1>
@@ -195,7 +342,9 @@ const HomePage = () => {
           />
           <Button onClick={() => callJsService(value)}>js-service 호출</Button>
         </div>
-        <div>{res?.message}</div>
+        <div style={{ width: '100%', wordBreak: 'break-all' }}>
+          {res?.message}
+        </div>
       </div>
 
       <div>
@@ -204,11 +353,113 @@ const HomePage = () => {
         </h1>
         <div className="flex flex-col w-60">
           <Button id="serviceOn" onClick={serviceOn} className="mb-4">
-            Websocker ON
+            Websocket ON
           </Button>
           <Button id="serviceOff" onClick={serviceOff}>
-            Websocker OFF
+            Websocket OFF
           </Button>
+        </div>
+      </div>
+
+      <div>
+        <h1 className="text-3xl mt-5 border-t-[1px] p-2">UDP client</h1>
+        <div>
+          <Button onClick={() => callJsServiceUdp('start')} className="mb-4">
+            start
+          </Button>
+          <Button onClick={() => callJsServiceUdp('devices')} className="mb-4">
+            devices
+          </Button>
+          <Button
+            onClick={() => callJsServiceUdp('getMessage')}
+            className="mb-4"
+          >
+            getMessage
+          </Button>
+          <Button onClick={() => callJsServiceUdp('stop')} className="mb-4">
+            stop
+          </Button>
+        </div>
+      </div>
+
+      <div>
+        <h1 className="text-3xl mt-5 border-t-[1px] p-2">TCP client</h1>
+        <div>
+          <Button onClick={() => callJsServiceTcpStart()} className="mb-4">
+            start
+          </Button>
+
+          <Button
+            onClick={() => callJsServiceTcpSendPacketInit()}
+            className="mb-4"
+          >
+            Init
+          </Button>
+          <Button
+            onClick={() => callJsServiceTcpSendPacketSetWifilist()}
+            className="mb-4"
+          >
+            SetWifilist
+          </Button>
+          <Button
+            onClick={() => callJsServiceTcpSendPacketGetWifilist()}
+            className="mb-4"
+          >
+            GetWifilist
+          </Button>
+          <Button
+            onClick={() => callJsServiceTcpSendPacketSetWifi()}
+            className="mb-4"
+          >
+            SetWifi
+          </Button>
+
+          <Button
+            onClick={() => callJsServiceTcpSendPacketActCode()}
+            className="mb-4"
+          >
+            send packet act code
+          </Button>
+
+          <Button
+            onClick={() => callJsServiceTcpRequest('getLog')}
+            className="mb-4"
+          >
+            get log (request)
+          </Button>
+          <Button
+            onClick={() => callJsServiceTcpNotify('getLog')}
+            className="mb-4"
+          >
+            get log (notify)
+          </Button>
+
+          <Button onClick={() => callJsServiceTcp('status')} className="mb-4">
+            status
+          </Button>
+          <Button onClick={() => callJsServiceTcp('stop')} className="mb-4">
+            stop
+          </Button>
+
+          <Button
+            onClick={() => callJsServiceTcpGetNotifyPacket()}
+            className="mb-4"
+          >
+            get notify packet
+          </Button>
+
+          <Button onClick={() => callJsServiceWifiTest()} className="mb-4">
+            wifi test
+          </Button>
+          <Button onClick={() => callJsServiceWifiTest2()} className="mb-4">
+            wifi test2
+          </Button>
+          <Button onClick={() => callJsServiceWifiTest3()} className="mb-4">
+            wifi test3
+          </Button>
+        </div>
+        <div style={{ width: '100%', wordBreak: 'break-all' }}>
+          {resNotify?.message}
         </div>
       </div>
     </div>
