@@ -13,5 +13,6 @@
     "activity.operation",
     "notification.operation",
     "com.hojeong.app.service.group"
-  ]
+  ],
+  "supportTouchMode": "full"
 }
