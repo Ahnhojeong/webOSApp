@@ -193,3 +193,19 @@ export const shotImg = {
   param: { shotImgPath: 'SCAMIMG/CURRENT/' },
   tcp_client_received: 1729506975794,
 };
+
+export const sensorState = {
+  header: { status: 0, answer: 177, command: 48, ack_id: 1, length: 14 },
+  param: { status: 258 },
+  tcp_client_received: 1729734561115,
+};
+
+export const ballPosition = {
+  header: { status: 0, answer: 177, command: 51, ack_id: 12, length: 192 },
+  param: {
+    teeBallPos: { ballexist: 0, shotresult: 0, x: 0, y: 0, z: 0 },
+    ironBallPos: { ballexist: 0, shotresult: 1, x: 0, y: 0, z: 0 },
+    puttingBallPos: { ballexist: 0, shotresult: 0, x: 0, y: 0, z: 0 },
+  },
+  tcp_client_received: 1729734561632,
+};

@@ -2,93 +2,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-interface NotifyHeader {
-  hard_key: number;
-  event_id: number;
-  command: number;
-  req_id: number;
-  length: number;
-}
-
-interface NotifyParamShotGuid {
-  Data1: number;
-  Data2: number;
-  Data3: number;
-  Data4: number[];
-}
-
-interface NotifyParamShotDataEx1 {
-  shotguid: NotifyParamShotGuid;
-  category: number;
-  rightlefthanded: number;
-  xposx1000: number;
-  yposx1000: number;
-  zposx1000: number;
-  ballspeedx1000: number;
-  inclineX1000: number;
-  azimuthX1000: number;
-  spincalc_method: number;
-  assurance_spin: number;
-  backspinX1000: number;
-  sidespinX1000: number;
-  rollspinX1000: number;
-  clubcalc_method: number;
-  assurance_clubspeed: number;
-  assurance_clubpath: number;
-  assurance_faceangle: number;
-  assurance_attackangle: number;
-  assurance_loftangle: number;
-  assurance_lieangle: number;
-  assurance_faceimpactLateral: number;
-  assurance_faceimpactVertical: number;
-  clubspeedX1000: number;
-  clubpathX1000: number;
-  faceangleX1000: number;
-  attackAngleX1000: number;
-  loftangleX1000: number;
-  lieangleX1000: number;
-  faceimpactLateralX1000: number;
-  faceimpactVerticalX1000: number;
-  impactTimestamp: number;
-}
-
-interface NotifyParamStateData {
-  rightleft: number;
-  clubtype: number;
-  allowTee: number;
-  allowIron: number;
-  allowPutter: number;
-  unitDistance: number;
-  unitSpeed: number;
-  altitude: number;
-  altitude_mode: number;
-}
-
-interface NotifyParamGoodShot {
-  status: number;
-  shotdataEX1: NotifyParamShotDataEx1;
-  statedata: NotifyParamStateData;
-}
-
-interface NotifyParamShotImg {
-  shotImgPath: string;
-}
-
-interface NotifyParamStateChanged {
-  status: number;
-  statedata: NotifyParamStateData;
-}
-
-interface NotifyPacket {
-  header: NotifyHeader;
-  param:
-    | NotifyParamGoodShot
-    | NotifyParamShotImg
-    | NotifyParamStateChanged
-    | any;
-  tcp_client_received: number;
-}
-
 const WS_URL = 'ws://localhost:9000'; // Websocket URL (Port를 제외한 IP는 webOS 기기의 IP를 입력해주세요.)
 
 const HomePage = () => {
@@ -161,65 +74,6 @@ const HomePage = () => {
   const ws = useRef<null | WebSocket>(null);
   const [wsOpen, setWsOpen] = useState<boolean>(false);
 
-  const handleMessage = useCallback((event: MessageEvent) => {
-    console.log('1-1. webOS websocket message -> ', event.data);
-
-    let data: any;
-
-    try {
-      // JSON 형식인지 먼저 파싱을 시도
-      data = JSON.parse(event.data);
-    } catch (error) {
-      // 파싱에 실패하면 원본 데이터를 그대로 사용합니다.
-      data = event.data;
-    }
-
-    // 이제 data는 객체이거나 원본 텍스트입니다.
-    if (typeof data === 'object' && data !== null) {
-      console.log('webOS websocket 받은 데이터는 객체입니다:', data);
-      // 객체에 대한 처리를 여기서 수행합니다.
-      if (data.header) {
-        console.log('1-2. webOS websocket 받은 데이터에 header가 포함됩니다.');
-        switch (data.header.command) {
-          case 1: // GoodShot
-            handleGoodShot(data.param as NotifyParamGoodShot);
-            break;
-          case 2: // ShotImg
-            handleShotImg(data.param as NotifyParamShotImg);
-            break;
-          case 4: // StateChanged
-            handleStateChanged(data.param as NotifyParamStateChanged);
-            break;
-          default:
-            console.log('Unknown command:', data.header.command);
-        }
-      } else {
-        console.log(
-          '1-3. webOS websocket 받은 데이터에 header가 없습니다 -> ',
-          event.data,
-        );
-      }
-    } else {
-      console.log('1-4. webOS websocket 받은 데이터는 텍스트입니다 -> ', data);
-      // 텍스트에 대한 처리를 여기서 수행합니다.
-    }
-  }, []);
-
-  const handleGoodShot = (param: NotifyParamGoodShot) => {
-    console.log('Handling Good Shot:', param);
-    // GoodShot 데이터 처리 로직
-  };
-
-  const handleShotImg = (param: NotifyParamShotImg) => {
-    console.log('Handling Shot Image:', param);
-    // ShotImg 데이터 처리 로직
-    // 이미지 저장소=`http://${ip}/${param.shotImgPath}` ex)http://192.168.1.61/SCAMIMG/CURRENT/
-  };
-
-  const handleStateChanged = (param: NotifyParamStateChanged) => {
-    console.log('Handling State Changed: ', param);
-  };
-
   useEffect(() => {
     if (wsOpen) {
       ws.current = new WebSocket(WS_URL);
@@ -227,10 +81,9 @@ const HomePage = () => {
       ws.current.onopen = () => {
         console.log('1. webOS websocket open', ws.current?.readyState);
         if (ws.current && ws.current.readyState === 1) {
-          // ws.current.onmessage = (event: MessageEvent) => {
-          //   console.log('1-1. webOS websocket message -> ', event.data);
-          // };
-          ws.current.onmessage = handleMessage;
+          ws.current.onmessage = (event: MessageEvent) => {
+            console.log('1-1. webOS websocket message -> ', event.data);
+          };
         }
       };
 
@@ -301,6 +154,15 @@ const HomePage = () => {
       parameters: {},
       onFailure: showFailure,
       onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceTcpSubscribe = (value: string) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/' + value,
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+      subscribe: true,
     });
   };
 
@@ -586,6 +448,19 @@ const HomePage = () => {
           </Button>
           <Button onClick={() => callJsServiceTcp('stop')} className="mb-4">
             stop
+          </Button>
+
+          <Button
+            onClick={() => callJsServiceTcp('startGetSensorStatus')}
+            className="mb-4"
+          >
+            startGetSensorStatus
+          </Button>
+          <Button
+            onClick={() => callJsServiceTcp('stopGetSensorStatus')}
+            className="mb-4"
+          >
+            stopGetSensorStatus
           </Button>
 
           <Button

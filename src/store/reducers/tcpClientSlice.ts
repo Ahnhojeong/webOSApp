@@ -26,7 +26,7 @@ interface WifiList {
   header: AckHeader;
   param: {
     wifiList: IWifiList;
-    number: number;
+    number: number; // 0보다 큰 상태여야 setWifi 가능, -1이면 계속해서 getWifilist 체크
   };
   tcp_client_received: number;
 }
@@ -92,29 +92,55 @@ export interface TcpNotifyStateChanged {
 }
 
 export interface INotifyStateChanged {
-  header: AckHeader;
+  header: AckHeader | {};
   param: {
     status: number;
     statedata: TcpNotifyStateChanged;
-  };
+  } | null;
   tcp_client_received: number;
 }
 
 export interface INotifyGoodShot {
-  header: AckHeader;
+  header: AckHeader | {};
   param: {
     status: number;
     shotdatEx1: NotifyParamShotDataEx1;
     statedata: TcpNotifyStateChanged;
-  };
+  } | null;
   tcp_client_received: number;
 }
 
-export interface ITcpNotifyShotImg {
-  header: AckHeader;
+export interface INotifyShotImg {
+  header: AckHeader | {};
   param: {
     shotImgPath: string;
-  };
+  } | null;
+  tcp_client_received: number;
+}
+
+export interface ISensorState {
+  header: AckHeader | {};
+  param: {
+    status: number;
+  } | null;
+  tcp_client_received: number;
+}
+
+export interface BallPositionType {
+  ballexist: number;
+  shotresult: number;
+  x: number;
+  y: number;
+  z: number;
+}
+
+export interface IBallPosition {
+  header: AckHeader | {};
+  param: {
+    teeBallPos: BallPositionType;
+    ironBallPos: BallPositionType;
+    puttingBallPos: BallPositionType;
+  } | null;
   tcp_client_received: number;
 }
 
@@ -127,35 +153,37 @@ const tcpClientSlice = createSlice({
   name: 'tcpClient',
   initialState: {
     start: {
-      returnValue: true,
+      returnValue: false,
       data: '',
     } as IMsgResponse,
     sendPacketInit: {
-      returnValue: true,
+      returnValue: false,
       data: '',
     } as ITcpPacketInit,
     getWifiList: {
-      returnValue: true,
+      returnValue: false,
       data: '',
     } as ITcpWifiList,
     setWifiList: {
       // setWifiList 이후 getWifiList 진행 권장
-      returnValue: true,
+      returnValue: false,
       data: '',
     } as ITcpPacketInit,
     setWifi: {
-      returnValue: true,
+      returnValue: false,
       data: '',
     } as ITcpPacketInit,
     status: {
       // ex) {"ip":"192.168.0.68","requestRunning":true,"notifyRunning":true}
       // notifyRunning이 true가 된 상태면 notifyPacket을 수신할 준비 완료된 상태
-      returnValue: true,
+      returnValue: false,
       data: '',
     } as ITcpStatus,
     stateChanged: {} as INotifyStateChanged,
     goodShot: {} as INotifyGoodShot,
-    shotImg: {} as ITcpNotifyShotImg,
+    shotImg: {} as INotifyShotImg,
+    sensorState: {} as ISensorState,
+    ballPosition: {} as IBallPosition,
   },
   reducers: {
     setTcpClientStart: (state, action: PayloadAction<IMsgResponse>) => {
@@ -188,8 +216,14 @@ const tcpClientSlice = createSlice({
     setNotifyGoodShot: (state, action: PayloadAction<INotifyGoodShot>) => {
       state.goodShot = action.payload;
     },
-    setNotifyShotImg: (state, action: PayloadAction<ITcpNotifyShotImg>) => {
+    setNotifyShotImg: (state, action: PayloadAction<INotifyShotImg>) => {
       state.shotImg = action.payload;
+    },
+    setSensorState: (state, action: PayloadAction<ISensorState>) => {
+      state.sensorState = action.payload;
+    },
+    setBallPosition: (state, action: PayloadAction<IBallPosition>) => {
+      state.ballPosition = action.payload;
     },
   },
 });
