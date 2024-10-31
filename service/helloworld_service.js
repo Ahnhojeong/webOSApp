@@ -2,22 +2,46 @@
 /* eslint-disable import/no-unresolved */
 
 // 필요 모듈 선언
-var pkgInfo = require('./package.json');
-var Service = require('webos-service');
-var service = new Service(pkgInfo.name);
-var greeting = 'Hello, World!';
+const pkgInfo = require('./package.json');
+const Service = require('webos-service');
+const service = new Service(pkgInfo.name);
+let greeting = 'Hello, World!';
 const WebSocket = require('ws');
+const express = require('express');
+const http = require('http');
+const path = require('path');
+
+const app = express();
+
+const wsPort = 9000;
+const webglPort = 8000;
 
 const logHeader = `[${pkgInfo.name}]`;
-const port = 9000;
+
 let wss = null;
 
 // heartbeat 변수
 let heartbeatSubscription = null;
 let isMonitoring = false;
 
+// webgl
+const webglPath = path.join(__dirname, './webgl'); // webgl 경로
+app.use('/webgl', express.static(webglPath)); // 정적 파일 제공하기 위한 미들웨어
+
+app.get('/front', (req, res) => {
+  res.sendFile(path.join(webglPath, 'front/index.html'));
+});
+
+app.get('/trajectory', (req, res) => {
+  res.sendFile(path.join(webglPath, 'trajectory/index.html'));
+});
+
+http.createServer(app).listen(webglPort, () => {
+  console.log(`Server runiing ${webglPort}`);
+});
+
 // Sample Test Code1 (임시)
-var name = 'World';
+let name = 'World';
 service.register('hello', function (message) {
   console.log('In hello callback');
   if (message.payload && message.payload.name) {
@@ -59,7 +83,7 @@ function createWebSocketServer() {
     return;
   }
 
-  wss = new WebSocket.Server({ port: port });
+  wss = new WebSocket.Server({ port: wsPort });
 
   // 클라이언트 연결
   wss.on('connection', (ws) => {
@@ -87,7 +111,7 @@ function createWebSocketServer() {
     }, 3000);
   });
 
-  console.log(logHeader, `WebSocket server is running on port ${port}`);
+  console.log(logHeader, `WebSocket server is running on port ${wsPort}`);
 }
 
 // 웹소켓 서버 닫기
@@ -114,6 +138,9 @@ service.register('serviceOn', (message) => {
   if (!isMonitoring) {
     startMonitoring();
     createWebSocketServer();
+
+    // 웹소켓 실행과 함께 udp도 실행되어야 함 - 기기 찾기
+    startUdpClient();
 
     message.respond({
       returnValue: true,
@@ -212,7 +239,7 @@ function sendResponses() {
 }
 
 // heartbeat 서비스 메서드 등록
-var heartbeat = service.register('heartbeat');
+const heartbeat = service.register('heartbeat');
 heartbeat.on('request', function (message) {
   console.log('SERVICE_METHOD_CALLED:/heartbeat');
   console.log(logHeader, 'SERVICE_METHOD_CALLED:/heartbeat');
@@ -245,8 +272,18 @@ let udpMessage = '';
 let udpMessageUpdated = null;
 let eyeminiDevices = [];
 let eyeminiDeviceIp = ''; // 가장 최근 찾은 기기의 ip주소 저장 - ip 주소 없이 tcp client 시작할 때 기본값
+let eyeminiDeviceSerialNumber = ''; // 가장 최근 찾은 기기의 serialNumber 저장
 
 service.register('udpClient/start', function (message) {
+  startUdpClient();
+
+  message.respond({
+    returnValue: true,
+    data: 'udpClient : Start',
+  });
+});
+
+function startUdpClient() {
   if (udpClient != null) {
     // 이전 실행하고 있던 client 있을 경우 종료
     udpClient.close();
@@ -254,6 +291,7 @@ service.register('udpClient/start', function (message) {
 
   eyeminiDevices = [];
   eyeminiDeviceIp = '';
+  eyeminiDeviceSerialNumber = '';
 
   startMonitoring(); // heartbeat
 
@@ -281,14 +319,14 @@ service.register('udpClient/start', function (message) {
       var eyemini = obj.device;
       eyemini.updated = Date.now();
 
-      if (eyemini.networkInfo.ipaddr !== undefined) {
-        // 배열에서 같은 ipaddr을 가진 객체의 인덱스 찾기
+      if (eyemini.serialNumber !== undefined) {
+        // 배열에서 같은 serialNumber를 가진 객체의 인덱스 찾기
         const existingIndex = eyeminiDevices.findIndex(
-          (device) => device.networkInfo.ipaddr === eyemini.networkInfo.ipaddr,
+          (device) => device.serialNumber === eyemini.serialNumber,
         );
 
         if (existingIndex !== -1) {
-          // 같은 ipaddr이 있을 경우 해당 객체의 값을 갱신
+          // 같은 serialNumber 있을 경우 해당 객체의 값을 갱신
           eyeminiDevices[existingIndex] = eyemini;
         } else {
           // 같은 ipaddr이 없으면 배열에 새 객체를 push
@@ -297,6 +335,7 @@ service.register('udpClient/start', function (message) {
 
         // 가장 최근 찾은 기기의 ip주소 저장
         eyeminiDeviceIp = eyemini.networkInfo.ipaddr;
+        eyeminiDeviceSerialNumber = eyemini.serialNumber;
       }
     } catch (e) {
       console.log(e.message);
@@ -311,12 +350,7 @@ service.register('udpClient/start', function (message) {
     udpClient = null;
     udpClientRunning = false;
   });
-
-  message.respond({
-    returnValue: true,
-    data: 'udpClient : Start',
-  });
-});
+}
 
 service.register('udpClient/getMessage', function (message) {
   if (udpClient == null || udpClientRunning === false) {
@@ -384,7 +418,8 @@ const {
   RequestPacket,
   RequestHeader,
   RequestParamCR2Init,
-  cr_crc32
+  crCrc32,
+  EncryptedData0,
 } = require('./EyeMiniSdk');
 
 let tcpClientRequest = null;
@@ -729,25 +764,7 @@ service.register('tcpClient/startGetSensorStatus', function (message) {
   } else {
     messageGetSensorStatus = message;
 
-    // 일정 주기로 센서 상태 확인 명령 전송
-    if(intervalGetSensorStatus==null){
-      intervalGetSensorStatus = setInterval(function () {
-        if (tcpClientRequest != null && tcpClientRequest.isRunning === true) {
-          {
-            const param = null;
-            const header = new RequestHeader(EyeMiniSdk.JSON_EVENT_CR2CMD, EyeMiniSdk.CR2CMD_SENSORSTATUS, 0);
-            const packet = new RequestPacket(header, param);
-            tcpClientRequest.sendPacket(packet);    
-          }
-          {
-            const param = null;
-            const header = new RequestHeader(EyeMiniSdk.JSON_EVENT_CR2CMD, EyeMiniSdk.CR2CMD_BALLPOSITION, 0);
-            const packet = new RequestPacket(header, param);
-            tcpClientRequest.sendPacket(packet);
-          }
-        }
-      }, 100);
-    }
+    startGetSensorStatus();
 
     message.respond({
       returnValue: true,
@@ -755,6 +772,37 @@ service.register('tcpClient/startGetSensorStatus', function (message) {
     });
   }
 });
+
+function startGetSensorStatus() {
+  // 일정 주기로 센서 상태 확인 명령 전송
+  if (intervalGetSensorStatus == null) {
+    intervalGetSensorStatus = setInterval(function () {
+      if (tcpClientRequest != null && tcpClientRequest.isRunning === true) {
+        {
+          const param = null;
+          const header = new RequestHeader(
+            EyeMiniSdk.JSON_EVENT_CR2CMD,
+            EyeMiniSdk.CR2CMD_SENSORSTATUS,
+            0,
+          );
+          const packet = new RequestPacket(header, param);
+          tcpClientRequest.sendPacket(packet);
+        }
+        {
+          const param = null;
+          const header = new RequestHeader(
+            EyeMiniSdk.JSON_EVENT_CR2CMD,
+            EyeMiniSdk.CR2CMD_BALLPOSITION,
+            0,
+          );
+          const packet = new RequestPacket(header, param);
+          tcpClientRequest.sendPacket(packet);
+        }
+      }
+    }, 1000);
+  }
+}
+
 service.register('tcpClient/stopGetSensorStatus', function (message) {
   clearInterval(intervalGetSensorStatus);
 
@@ -765,9 +813,7 @@ service.register('tcpClient/stopGetSensorStatus', function (message) {
     returnValue: true,
     data: 'tcpClient : stopGetSensorStatus',
   });
-
 });
-
 
 class TcpClient {
   constructor(name) {
@@ -781,11 +827,12 @@ class TcpClient {
     this.isRunning = false;
     this.receivedPackets = [];
     this.logMsgCnt = 0;
+    this.lastRecived = null;
   }
   logMessage(message) {
-    if(this.logMsgCnt>=30){
+    if (this.logMsgCnt >= 30) {
       this.logMsgCnt = 0;
-      this.tcpLog = "";
+      this.tcpLog = '';
     }
 
     this.tcpLog += message + '\n';
@@ -882,6 +929,7 @@ class TcpClient {
     if (this.tcpClient && this.stream) {
       this.tcpClient.on('data', (data) => {
         //this.logMessage('Data received: ' + data.toString());
+        this.lastRecived = Date.now();
 
         if (this.receivedPackets.length > 20) {
           this.receivedPackets.splice(0, this.receivedPackets.length - 20);
@@ -890,16 +938,21 @@ class TcpClient {
         var resultJson = this.extractJson(data);
         if (resultJson != null) {
           resultJson.tcp_client_received = Date.now();
-          if(this.name === 'request'){
-            if(resultJson.header.command === EyeMiniSdk.CR2CMD_SENSORSTATUS || resultJson.header.command === EyeMiniSdk.CR2CMD_BALLPOSITION){
+          if (this.name === 'request') {
+            if (
+              resultJson.header.command === EyeMiniSdk.CR2CMD_SENSORSTATUS ||
+              resultJson.header.command === EyeMiniSdk.CR2CMD_BALLPOSITION
+            ) {
               // 센서 상태 확인 응답일 경우
-              if(wss){ 
+              if (wss) {
                 wss.clients.forEach((client) => {
                   if (client.readyState === WebSocket.OPEN) {
                     try {
                       client.send(JSON.stringify(resultJson));
                     } catch (error) {
-                      this.logMessage('Failed to send message to client:' + error);
+                      this.logMessage(
+                        'Failed to send message to client:' + error,
+                      );
                     }
                   }
                 });
@@ -918,7 +971,7 @@ class TcpClient {
               this.receivedPackets.push(resultJson);
             }
           } else if (this.name === 'notify') {
-            if(wss){ 
+            if (wss) {
               wss.clients.forEach((client) => {
                 if (client.readyState === WebSocket.OPEN) {
                   try {
@@ -1061,7 +1114,7 @@ function createPacketGetActCode() {
     EyeMiniSdk.CR2CMD_SECURE_GET_ACT_CODE,
     size,
   );
-  
+
   const packet = new RequestPacket(header, param);
 
   //tcpClientRequest.logMessage(JSON.stringify(packet));
@@ -1105,7 +1158,7 @@ function GetActCodeParam() {
     clientInfoBuffer[49] = EyeMiniSdk.CLIENT_DEV_TYPE_TABLET;
 
     // Calculate CRC32 over clientInfoBuffer excluding Crc field
-    const crc = cr_crc32(0, clientInfoBuffer.slice(0, 60), 60) >>> 0;
+    const crc = crCrc32(0, clientInfoBuffer.slice(0, 60), 60) >>> 0;
     // Update Crc field
     clientInfoBuffer.writeUInt32LE(crc, 60);
 
@@ -1131,7 +1184,7 @@ function GetActCodeParam() {
     encrypted.copy(encryptedDataBuffer, 8);
 
     // Calculate CRC over EncryptedData excluding Crc field
-    const crcEncrypted = cr_crc32(
+    const crcEncrypted = crCrc32(
       0,
       Buffer.concat([
         encryptedDataBuffer.slice(0, 4), // Payload_Length
@@ -1246,9 +1299,322 @@ function parseActCode(buffer) {
   };
 }
 
-// EncryptedData0 클래스 정의
-class EncryptedData0 {
-  constructor(encryptedData0) {
-    this.encryptedData0 = encryptedData0; // EncryptedData 인스턴스
+// 기기 연결 과정 일괄 service 구현 - deviceConnection
+let deviceConnectionCurrentDevice = null; // 현재 연결된 eyemini 기기 정보
+let deviceConnectionRunning = false; // 중복 연결 시도 막음
+let deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED; // 현재 연결 상태
+let deviceConnectionStateTryCnt = 0; // 연결 상태 확인 시도 횟수 - 일정 수 이상일 경우 timeout, 무한으로 연결 시도하는 경우 방지
+let deviceConnectionSerialNumber = ''; // 연결 대상 eyemini serial number - ip 주소는 경우에 따라 바뀔 수 있음
+let deviceConnectionInterval = null; // 주기적으로 연결 상태 확인 - 단계에 따라 STATE 전환 수행
+let deviceConnectionConnctedTime = null; // 연결 성공 시각
+
+service.register('device/connect', function (message) {
+  // 연결 대상 serialNumber
+  var serialNumber = '';
+  if (message.payload && message.payload.serialNumber) {
+    serialNumber = message.payload.serialNumber;
+  }
+  if (
+    serialNumber === '' &&
+    eyeminiDevices.length > 0 &&
+    eyeminiDeviceSerialNumber !== ''
+  ) {
+    serialNumber = eyeminiDeviceSerialNumber;
+  }
+  if (serialNumber === '') {
+    message.respond({
+      returnValue: false,
+      data: 'invalid serialNumber',
+    });
+    return;
+  }
+  deviceConnectionSerialNumber = serialNumber;
+
+  // 이미 연결 시도중인 경우 중지
+  if (deviceConnectionRunning) {
+    message.respond({
+      returnValue: false,
+      data: 'deviceConnectionRunning',
+    });
+    return;
+  }
+  deviceConnectionRunning = true;
+  if (deviceConnectionInterval != null) {
+    clearInterval(deviceConnectionInterval);
+  }
+
+  if (!udpClientRunning) {
+    // udpClient 실행중이 아닌 경우 실행
+    startUdpClient();
+  }
+  deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_UDP_SEARCHING;
+  deviceConnectionStateTryCnt = 0;
+
+  deviceConnectionInterval = setInterval(function () {
+    checkDeviceConnection();
+  }, 500);
+
+  message.respond({
+    returnValue: true,
+    data: 'device/connect : Start',
+  });
+});
+
+function checkDeviceConnection() {
+  switch (deviceConnectionState) {
+    case EyeMiniSdk.DEVICE_CONNECTION_STATE_UDP_SEARCHING:
+      // 연결 시도하는 기기 udp packet 찾기
+
+      const existingIndex = eyeminiDevices.findIndex(
+        (device) => device.serialNumber === deviceConnectionSerialNumber,
+      );
+
+      if (existingIndex !== -1) {
+        // 기기 찾은 경우
+        deviceConnectionCurrentDevice = eyeminiDevices[existingIndex];
+
+        // tcp client 시작
+
+        if (tcpClientRequest != null || tcpClientNotify != null) {
+          // 이전 실행하고 있던 client 있을 경우 종료
+          tcpClientRequest.clearClient();
+          tcpClientNotify.clearClient();
+        }
+
+        var ip = deviceConnectionCurrentDevice.networkInfo.ipaddr;
+
+        tcpClientRequest = new TcpClient('request');
+        tcpClientRequest.createClient(ip, EyeMiniSdk.RequestAckPort);
+        tcpClientNotify = new TcpClient('notify');
+        tcpClientNotify.createClient(ip, EyeMiniSdk.NotifyPort);
+
+        deviceConnectionStateTryCnt = 0;
+        deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_START;
+      } else {
+        // 찾지 못한 경우
+        deviceConnectionStateTryCnt++;
+
+        // timeout
+        if (deviceConnectionStateTryCnt > 10) {
+          wsSendMessage(
+            JSON.stringify({
+              device_connection: false,
+              message: 'device_not_found',
+            }),
+          );
+          deviceConnectionRunning = false;
+          deviceConnectionState =
+            EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+        }
+      }
+
+      break;
+    case EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_START:
+      if (
+        tcpClientRequest != null &&
+        tcpClientNotify != null &&
+        tcpClientRequest.isRunning &&
+        tcpClientNotify.isRunning
+      ) {
+        // tcp init 전송
+        const packet = createPacketCr2Init();
+        const req_id = packet.header.req_id;
+        tcpClientRequest.sendPacket(packet);
+
+        // 응답 대기 (3초 타임아웃 내에 0.5초마다 확인)
+        let checkInterval = setInterval(() => {
+          const ackPacket = tcpClientRequest.receivedPackets.find(
+            (p) => p.header.ack_id === req_id,
+          );
+          if (ackPacket) {
+            clearInterval(checkInterval);
+            //clearTimeout(timeoutHandle);
+            // 수신 성공
+
+            wsSendMessage(
+              JSON.stringify({
+                device_connection: true,
+                message: 'init_received',
+              }),
+            );
+            deviceConnectionRunning = false;
+            deviceConnectionStateTryCnt = 0;
+            deviceConnectionState =
+              EyeMiniSdk.DEVICE_CONNECTION_STATE_CONNECTED;
+            deviceConnectionConnctedTime = Date.now();
+            startGetSensorStatus();
+          }
+        }, 500);
+
+        /*
+        // 타임아웃 설정 (3초 후)
+        let timeoutHandle = setTimeout(() => {
+          clearInterval(checkInterval);
+          // 응답 수신 실패
+
+        }, 3000);
+        */
+      } else {
+        deviceConnectionStateTryCnt++;
+        // timeout
+        if (deviceConnectionStateTryCnt > 10) {
+          wsSendMessage(
+            JSON.stringify({
+              device_connection: false,
+              message: 'tcp_client_cannot_start',
+            }),
+          );
+          deviceConnectionRunning = false;
+          deviceConnectionState =
+            EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+        }
+      }
+      break;
+    case EyeMiniSdk.DEVICE_CONNECTION_STATE_CONNECTED:
+      // 기기 연결 이상 확인 - tcp 이상, udp 이상, notify 수신 불가
+      if (tcpClientRequest == null || tcpClientRequest.isRunning === false) {
+        // tcp client 연결 이상인 경우
+        wsSendMessage(
+          JSON.stringify({
+            device_connection: false,
+            message: 'tcp_client_request_disconncted',
+          }),
+        );
+        deviceConnectionRunning = false;
+        deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+      } else if (
+        tcpClientNotify == null ||
+        tcpClientNotify.isRunning === false
+      ) {
+        wsSendMessage(
+          JSON.stringify({
+            device_connection: false,
+            message: 'tcp_client_notify_disconncted',
+          }),
+        );
+        deviceConnectionRunning = false;
+        deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+      } else if (udpClient == null || udpClientRunning === false) {
+        // udp client 연결 이상
+        wsSendMessage(
+          JSON.stringify({
+            device_connection: false,
+            message: 'udp_client_disconncted',
+          }),
+        );
+        deviceConnectionRunning = false;
+        deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+      }
+
+      // udp 기기 찾기 실패한 경우
+      if (
+        deviceConnectionState === EyeMiniSdk.DEVICE_CONNECTION_STATE_CONNECTED
+      ) {
+        // eyeminiDevices 배열에서 updated가 10초 이전인 항목들을 제거
+        const tenSecondsAgo = Date.now() - 10000;
+        eyeminiDevices = eyeminiDevices.filter(
+          (device) => device.updated >= tenSecondsAgo,
+        );
+
+        const existingIndex = eyeminiDevices.findIndex(
+          (device) => device.serialNumber === deviceConnectionSerialNumber,
+        );
+        if (existingIndex === -1) {
+          wsSendMessage(
+            JSON.stringify({
+              device_connection: false,
+              message: 'udp_packet_not_found',
+            }),
+          );
+          deviceConnectionRunning = false;
+          deviceConnectionState =
+            EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+        }
+      }
+
+      // 센서 상태 수신이 일정 시간 이상 이뤄지지 않은 경우 - 5초(임의로 정함)
+      if (
+        deviceConnectionState === EyeMiniSdk.DEVICE_CONNECTION_STATE_CONNECTED
+      ) {
+        if (tcpClientRequest.lastRecived == null) {
+          if (Date.now() - deviceConnectionConnctedTime > 5000) {
+            wsSendMessage(
+              JSON.stringify({
+                device_connection: false,
+                message: 'sensor_status_not_received',
+              }),
+            );
+            deviceConnectionRunning = false;
+            deviceConnectionState =
+              EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+          }
+        } else {
+          if (Date.now() - tcpClientRequest.lastRecived > 5000) {
+            wsSendMessage(
+              JSON.stringify({
+                device_connection: false,
+                message: 'sensor_status_not_received',
+              }),
+            );
+            deviceConnectionRunning = false;
+            deviceConnectionState =
+              EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+          }
+        }
+      }
+
+      break;
+
+    default:
+  }
+
+  wsSendMessage(
+    JSON.stringify({ device_connection_state: deviceConnectionState }),
+  );
+}
+
+service.register('device/disconnect', function (message) {
+  // 연결 시도중인 경우 - 연결 해제할 수 없음
+  if (deviceConnectionRunning) {
+    message.respond({
+      returnValue: false,
+      data: 'deviceConnectionRunning',
+    });
+    return;
+  }
+
+  if (deviceConnectionInterval != null) {
+    clearInterval(deviceConnectionInterval);
+    deviceConnectionInterval = null;
+  }
+  if (intervalGetSensorStatus != null) {
+    clearInterval(intervalGetSensorStatus);
+    intervalGetSensorStatus = null;
+  }
+
+  deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+  deviceConnectionStateTryCnt = 0;
+
+  message.respond({
+    returnValue: true,
+    data: 'device/disconnect success',
+  });
+});
+
+// device/disconnect
+
+// device/status
+
+function wsSendMessage(msg) {
+  if (wss) {
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        try {
+          client.send(msg);
+        } catch (error) {
+          console.log('Failed to send message to client:' + error);
+        }
+      }
+    });
   }
 }

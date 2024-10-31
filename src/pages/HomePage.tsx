@@ -101,7 +101,7 @@ const HomePage = () => {
 
   const callService = useRef<any>(null);
 
-  function serviceOn() {
+  const serviceOn = useCallback(() => {
     console.log('call websocket server open');
     callService.current = window.webOS.service.request(
       'luna://com.hojeong.app.service/',
@@ -118,7 +118,7 @@ const HomePage = () => {
         subscribe: true,
       },
     );
-  }
+  }, []);
 
   const serviceOff = useCallback(() => {
     if (callService.current) {
@@ -139,13 +139,17 @@ const HomePage = () => {
     }
   }, [callService]);
 
+  useEffect(() => {
+    // 사전 준비 사항이 완료되었다는 전제로 EYEMINI 연결 동작을 진행
+    serviceOn();
+  }, [serviceOn]);
+
   const callJsServiceUdp = (value: string) => {
     window.webOS.service.request('luna://com.hojeong.app.service/', {
       method: 'udpClient/' + value,
       parameters: {},
       onFailure: showFailure,
       onSuccess: showSuccess,
-      subscribe: true,
     });
   };
   const callJsServiceTcp = (value: string) => {
@@ -156,6 +160,23 @@ const HomePage = () => {
       onSuccess: showSuccess,
     });
   };
+  const callJsServiceDevice = (value: string) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'device/' + value,
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceDeviceConnect = (serialNumber: string) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'device/connect',
+      parameters: { serialNumber: serialNumber },
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+
   const callJsServiceTcpSubscribe = (value: string) => {
     window.webOS.service.request('luna://com.hojeong.app.service/', {
       method: 'tcpClient/' + value,
@@ -469,7 +490,8 @@ const HomePage = () => {
           >
             get notify packet
           </Button>
-
+        </div>
+        <div>
           <Button onClick={() => callJsServiceWifiTest()} className="mb-4">
             wifi test
           </Button>
@@ -478,6 +500,28 @@ const HomePage = () => {
           </Button>
           <Button onClick={() => callJsServiceWifiTest3()} className="mb-4">
             wifi test3
+          </Button>
+        </div>
+        <div>
+          <Button
+            onClick={() => callJsServiceDevice('connect')}
+            className="mb-4"
+          >
+            device/connect
+          </Button>
+
+          <Button
+            onClick={() => callJsServiceDeviceConnect('501000008535')}
+            className="mb-4"
+          >
+            device/connect - serialNumber
+          </Button>
+
+          <Button
+            onClick={() => callJsServiceDevice('disconnect')}
+            className="mb-4"
+          >
+            device/disconnect
           </Button>
         </div>
         <div style={{ width: '100%', wordBreak: 'break-all' }}>

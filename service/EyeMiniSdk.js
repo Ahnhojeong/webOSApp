@@ -4,31 +4,39 @@ const EyeMiniSdk = {
   NotifyPort: 43267,
   DummyPort: 43268,
 
-  HARD_KEY:0x52,
+  HARD_KEY: 0x52,
   MAGIC_NUMBER: Buffer.from([0x99, 0x01, 0x28, 0x28]),
-  JSON_EVENT_ERROR: 0x00000000, 
-  CR2CMD_SECURE_GET_ACT_CODE: 0x000000D9,
-  JSON_EVENT_CR2INIT:0x000000B2,
-  JSON_EVENT_CR2CMD:0x000000B0,
-  JSON_EVENT_CR2CMD_ACK:0x000000B1,
-  JSON_EVENT_NOTIFY_CR2CMD:0x000000C0,
-  REQUEST_ID:0,
-  CR2CMD_SET_WIFILIST:0x000000CC,
-  CR2CMD_GET_WIFILIST:0x000000CD,
-  CR2CMD_SET_WIFI: 0x000000CA,
-  CR2CMD_GET_WIFI: 0x000000CB,
-  
-  CR2CMD_SENSORSTATUS:0x00000030,
-  CR2CMD_BALLPOSITION:0x00000033,
+  JSON_EVENT_ERROR: 0x00000000,
+  CR2CMD_SECURE_GET_ACT_CODE: 0x000000d9,
+  JSON_EVENT_CR2INIT: 0x000000b2,
+  JSON_EVENT_CR2CMD: 0x000000b0,
+  JSON_EVENT_CR2CMD_ACK: 0x000000b1,
+  JSON_EVENT_NOTIFY_CR2CMD: 0x000000c0,
+  REQUEST_ID: 0,
+  CR2CMD_SET_WIFILIST: 0x000000cc,
+  CR2CMD_GET_WIFILIST: 0x000000cd,
+  CR2CMD_SET_WIFI: 0x000000ca,
+  CR2CMD_GET_WIFI: 0x000000cb,
 
-  CLIENT_DEV_TYPE_TABLET:2,
-}
+  CR2CMD_SENSORSTATUS: 0x00000030,
+  CR2CMD_BALLPOSITION: 0x00000033,
 
+  CLIENT_DEV_TYPE_TABLET: 2,
+
+  // DEVICE_CONNECTION_STATE_UDP_START:1001,
+  // DEVICE_CONNECTION_STATE_UDP_READY:1010,
+  DEVICE_CONNECTION_STATE_UDP_SEARCHING: 1020, // 연결 시도하는 기기 udp packet 찾는중
+  DEVICE_CONNECTION_STATE_TCP_START: 1030, // tcp client 시작
+  //DEVICE_CONNECTION_STATE_TCP_READY:1040,
+  //DEVICE_CONNECTION_STATE_NOTIFY_READY:1050,
+  DEVICE_CONNECTION_STATE_CONNECTED: 1060,
+  DEVICE_CONNECTION_STATE_DISCONNECTED: 1099,
+};
 
 class RequestPacket {
   constructor(header, param) {
-      this.header = header;
-      this.param = param;
+    this.header = header;
+    this.param = param;
   }
 }
 class RequestHeader {
@@ -50,8 +58,6 @@ class RequestParamCR2Init {
     this.p3 = p3;
   }
 }
-
-
 
 // CRC32 Table (same as in C# code)
 const crc_table = [
@@ -100,7 +106,7 @@ const crc_table = [
   0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d,
 ];
 
-function cr_crc32(crc, buf, len) {
+function crCrc32(crc, buf, len) {
   if (!buf) return 0;
 
   crc = (crc ^ 0xffffffff) >>> 0;
@@ -143,11 +149,17 @@ function DO8(buf, index, crc) {
   return crc >>> 0;
 }
 
+class EncryptedData0 {
+  constructor(encryptedData0) {
+    this.encryptedData0 = encryptedData0; // EncryptedData 인스턴스
+  }
+}
 
 module.exports = {
   EyeMiniSdk,
   RequestPacket,
   RequestHeader,
   RequestParamCR2Init,
-  cr_crc32
+  crCrc32,
+  EncryptedData0,
 };

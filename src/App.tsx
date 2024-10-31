@@ -6,16 +6,16 @@ import { WebsocketProvider } from '@/context/WebsocketContext';
 
 function App() {
   return (
-    <WebsocketProvider>
-      <div className="App">
-        <HashRouter basename="/">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </HashRouter>
-      </div>
-    </WebsocketProvider>
+    // <WebsocketProvider>
+    <div className="App">
+      <HashRouter basename="/">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </HashRouter>
+    </div>
+    // </WebsocketProvider>
   );
 }
 
