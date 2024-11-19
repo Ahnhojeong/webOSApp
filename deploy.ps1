@@ -20,7 +20,7 @@ $APP_TITLE = $args[4]
 
 # $SIMULATOR_PATH = "C:\Users\user\tool\webOS_TV_22_Simulator_1.4.1"
 $SIMULATOR_PATH = "C:\Users\user\tool\webOS_TV_6.0_Simulator_1.4.1"
-$BUILD_PATH = "C:\Users\user\Documents\creatz\webos-app\build"
+$BUILD_PATH = "C:\Users\user\Documents\creatz\test-code\webOSApp\build"
 
 # 매개변수 출력
 Write-Host ">> Device name: $DEVICE_NAME"

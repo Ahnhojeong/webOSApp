@@ -2,7 +2,7 @@
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import HomePage from '@/pages/HomePage';
 import NotFoundPage from '@/pages/NotFoundPage';
-import { WebsocketProvider } from '@/context/WebsocketContext';
+import HomePage2 from './pages/HomePage2';
 
 function App() {
   return (
