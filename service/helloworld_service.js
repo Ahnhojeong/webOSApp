@@ -673,6 +673,63 @@ service.register('tcpClient/sendPacketSetWifi', function (message) {
   }
 });
 
+service.register('tcpClient/sendPacketCalcTrajectoryFile', function (message) {
+  if (tcpClientRequest == null || tcpClientRequest.isRunning === false) {
+    message.respond({
+      returnValue: false,
+      data: 'tcpClientRequest : invalid',
+    });
+  } else {
+    const ballspeedX10 = message.payload.ballspeedX10 || 0;
+    const clubspeed_BX10 = message.payload.clubspeed_BX10 || 0;
+    const clubspeed_AX10 = message.payload.clubspeed_AX10 || 0;
+    const clubpathX10 = message.payload.clubpathX10 || 0;
+    const clubfaceangleX10 = message.payload.clubfaceangleX10 || 0;
+    const sidespin = message.payload.sidespin || 0;
+    const backspin = message.payload.backspin || 0;
+    const azimuthX10 = message.payload.azimuthX10 || 0;
+    const inclineX10 = message.payload.inclineX10 || 0;
+
+    const packet = createPacketCr2CmdCalcTrajectoryFile(
+      ballspeedX10,
+      clubspeed_BX10,
+      clubspeed_AX10,
+      clubpathX10,
+      clubfaceangleX10,
+      sidespin,
+      backspin,
+      azimuthX10,
+      inclineX10,
+    );
+    const req_id = packet.header.req_id;
+    tcpClientRequest.sendPacket(packet);
+
+    // 응답 대기 (3초 타임아웃 내에 0.5초마다 확인)
+    let checkInterval = setInterval(() => {
+      const ackPacket = tcpClientRequest.receivedPackets.find(
+        (p) => p.header.ack_id === req_id,
+      );
+      if (ackPacket) {
+        clearInterval(checkInterval);
+        clearTimeout(timeoutHandle);
+        message.respond({
+          returnValue: true,
+          data: JSON.stringify(ackPacket),
+        });
+      }
+    }, 500);
+
+    // 타임아웃 설정 (3초 후)
+    let timeoutHandle = setTimeout(() => {
+      clearInterval(checkInterval);
+      message.respond({
+        returnValue: false,
+        data: 'tcpClientRequest : timeout',
+      });
+    }, 3000);
+  }
+});
+
 service.register('tcpClient/getNotifyPacket', function (message) {
   if (tcpClientNotify == null || tcpClientNotify.isRunning === false) {
     message.respond({
@@ -1090,6 +1147,39 @@ function createPacketCr2CmdSetWifi(encryption, ssid, password, type) {
   const header = new RequestHeader(
     EyeMiniSdk.JSON_EVENT_CR2CMD,
     EyeMiniSdk.CR2CMD_SET_WIFI,
+    0,
+  );
+  const packet = new RequestPacket(header, param);
+  return packet;
+}
+
+function createPacketCr2CmdCalcTrajectoryFile(
+  ballspeedX10,
+  clubspeed_BX10,
+  clubspeed_AX10,
+  clubpathX10,
+  clubfaceangleX10,
+  sidespin,
+  backspin,
+  azimuthX10,
+  inclineX10,
+) {
+  const param = {
+    shotdata: {
+      ballspeedX10: ballspeedX10,
+      clubspeed_BX10: clubspeed_BX10,
+      clubspeed_AX10: clubspeed_AX10,
+      clubpathX10: clubpathX10,
+      clubfaceangleX10: clubfaceangleX10,
+      sidespin: sidespin,
+      backspin: backspin,
+      azimuthX10: azimuthX10,
+      inclineX10: inclineX10,
+    },
+  };
+  const header = new RequestHeader(
+    EyeMiniSdk.JSON_EVENT_CR2CMD,
+    EyeMiniSdk.CR2CMD_CALC_TRAJECTORY_FILE,
     0,
   );
   const packet = new RequestPacket(header, param);

@@ -257,6 +257,24 @@ const HomePage = () => {
       onSuccess: showSuccess,
     });
   };
+  const callJsServiceTcpCalcTrajectoryFile = () => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketCalcTrajectoryFile',
+      parameters: {
+        ballspeedX10: 1,
+        clubspeed_BX10: 0,
+        clubspeed_AX10: 0,
+        clubpathX10: 0,
+        clubfaceangleX10: 0,
+        sidespin: 0,
+        backspin: 0,
+        azimuthX10: 0,
+        inclineX10: 0,
+      },
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
 
   const callJsServiceTcpGetNotifyPacket = () => {
     window.webOS.service.request('luna://com.hojeong.app.service/', {
@@ -522,6 +540,13 @@ const HomePage = () => {
             className="mb-4"
           >
             device/disconnect
+          </Button>
+
+          <Button
+            onClick={() => callJsServiceTcpCalcTrajectoryFile()}
+            className="mb-4"
+          >
+            CalcTrajectoryFile
           </Button>
         </div>
         <div style={{ width: '100%', wordBreak: 'break-all' }}>
