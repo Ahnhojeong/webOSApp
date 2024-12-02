@@ -41,11 +41,11 @@ service.register('/config/setGreeting', function (message) {
 // call toast
 service.register('toast', (msg) => {
   console.log('hi');
-  console.log(msg);
+  console.log(msg.payload);
 
   service.call(
     'luna://com.webos.notification/createToast',
-    { message: 'hello' },
+    { message: msg.payload.msg },
     function (m2) {
       msg.respond({
         returnValue: true,

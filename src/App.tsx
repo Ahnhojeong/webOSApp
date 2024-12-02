@@ -1,8 +1,6 @@
-// import { Route, Routes } from 'react-router-dom';
 import { HashRouter, Route, Routes } from 'react-router-dom';
-import HomePage from '@/pages/HomePage';
 import NotFoundPage from '@/pages/NotFoundPage';
-import { WebsocketProvider } from '@/context/WebsocketContext';
+import TestPage from './pages/TestPage';
 
 function App() {
   return (
@@ -10,7 +8,7 @@ function App() {
     <div className="App">
       <HashRouter basename="/">
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<TestPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </HashRouter>

@@ -2,7 +2,7 @@
   "name": "com.hojeong.app.service",
   "version": "1.0.0",
   "description": "Helloworld service",
-  "main": "helloworld_service.js",
+  "main": "camera_service.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
