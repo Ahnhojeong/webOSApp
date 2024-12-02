@@ -1,7 +1,7 @@
 {
   "id": "com.hojeong.app",
   "version": "1.0.0",
-  "vendor": "My Company",
+  "vendor": "hojeong",
   "type": "web",
   "main": "index.html",
   "title": "webos-app",
