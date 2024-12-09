@@ -7,14 +7,8 @@ const Service = require('webos-service');
 const service = new Service(pkgInfo.name);
 let greeting = 'Hello, World!';
 const WebSocket = require('ws');
-const express = require('express');
-const http = require('http');
-const path = require('path');
-
-const app = express();
 
 const wsPort = 9000;
-const webglPort = 8000;
 
 const logHeader = `[${pkgInfo.name}]`;
 
@@ -23,22 +17,6 @@ let wss = null;
 // heartbeat 변수
 let heartbeatSubscription = null;
 let isMonitoring = false;
-
-// webgl
-const webglPath = path.join(__dirname, './webgl'); // webgl 경로
-app.use('/webgl', express.static(webglPath)); // 정적 파일 제공하기 위한 미들웨어
-
-app.get('/front', (req, res) => {
-  res.sendFile(path.join(webglPath, 'front/index.html'));
-});
-
-app.get('/trajectory', (req, res) => {
-  res.sendFile(path.join(webglPath, 'trajectory/index.html'));
-});
-
-http.createServer(app).listen(webglPort, () => {
-  console.log(`Server runiing ${webglPort}`);
-});
 
 // Sample Test Code1 (임시)
 let name = 'World';
@@ -374,6 +352,12 @@ service.register('udpClient/devices', function (message) {
       data: 'udpClient : invalid',
     });
   } else {
+    // eyeminiDevices 배열에서 updated가 10초 이전인 항목들을 제거
+    const tenSecondsAgo = Date.now() - 10000;
+    eyeminiDevices = eyeminiDevices.filter(
+      (device) => device.updated >= tenSecondsAgo,
+    );
+
     message.respond({
       returnValue: true,
       data: JSON.stringify(eyeminiDevices),
@@ -424,6 +408,8 @@ const {
 
 let tcpClientRequest = null;
 let tcpClientNotify = null;
+const tcpClientAckCheckPeriod = 500; // 요청에 대한 ack packet 수신했는지 확인하는 주기 (ms)
+const tcpClientAckCheckTimeout = 3000; // 요청에 대한 ack packet 수신 실패 기준 (ms)
 
 service.register('tcpClient/start', function (message) {
   if (tcpClientRequest != null || tcpClientNotify != null) {
@@ -489,29 +475,6 @@ service.register('tcpClient/stop', function (message) {
     data: 'tcpClient : stop',
   });
 });
-
-/*
-service.register('tcpClient/sendPacketInit', function (message) {
-  if(tcpClientRequest==null || tcpClientRequest.isRunning===false){
-    message.respond({
-      returnValue: false,
-      data: 'tcpClientRequest : invalid',
-    });  
-  } else {
-    const packet = createPacketCr2Init();
-    const req_id = packet.header.req_id;
-    tcpClientRequest.sendPacket(packet);
-
-    // 응답 대기 (3초 타임아웃 내에 0.5초마다 확인)
-    // receivedPackets 배열에 ack_id == req_id인 object가 있는지 확인
-    // 있으면 해당 object를 data에 리턴 
-    message.respond({
-      returnValue: true,
-      data: 'tcpClientRequest : sendPacketInit'
-    });
-  }
-});
-*/
 
 service.register('tcpClient/sendPacketInit', function (message) {
   if (tcpClientRequest == null || tcpClientRequest.isRunning === false) {
@@ -730,6 +693,103 @@ service.register('tcpClient/sendPacketCalcTrajectoryFile', function (message) {
   }
 });
 
+service.register('tcpClient/sendPacketSetUnit', function (message) {
+  if (tcpClientRequest == null || tcpClientRequest.isRunning === false) {
+    message.respond({
+      returnValue: false,
+      data: 'tcpClientRequest : invalid',
+    });
+  } else {
+    const unitDistance = message.payload.unitDistance || 0;
+    const unitSpeed = message.payload.unitSpeed || 0;
+
+    if (unitDistance === 0 || unitSpeed === 0) {
+      message.respond({
+        returnValue: false,
+        data: 'tcpClientRequest : invalid payload',
+      });
+      return;
+    }
+    userUnitDistance = unitDistance;
+    userUnitSpeed = unitSpeed;
+
+    if (userUnitDistance < EyeMiniSdk.CR2UNIT_DISTANCE_YARD) {
+      userUnitDistance = EyeMiniSdk.CR2UNIT_DISTANCE_YARD;
+    } else if (userUnitDistance > EyeMiniSdk.CR2UNIT_DISTANCE_METER) {
+      userUnitDistance = EyeMiniSdk.CR2UNIT_DISTANCE_METER;
+    }
+    if (userUnitSpeed < EyeMiniSdk.CR2UNIT_SPEED_MPH) {
+      userUnitSpeed = EyeMiniSdk.CR2UNIT_SPEED_MPH;
+    } else if (userUnitSpeed > EyeMiniSdk.CR2UNIT_SPEED_YDS) {
+      userUnitSpeed = EyeMiniSdk.CR2UNIT_SPEED_YDS;
+    }
+
+    const packet = createPacketSetUnit(userUnitDistance, userUnitSpeed);
+    const req_id = packet.header.req_id;
+    tcpClientRequest.sendPacket(packet);
+
+    // 응답 대기 (3초 타임아웃 내에 0.5초마다 확인)
+    let checkInterval = setInterval(() => {
+      const ackPacket = tcpClientRequest.receivedPackets.find(
+        (p) => p.header.ack_id === req_id,
+      );
+      if (ackPacket) {
+        clearInterval(checkInterval);
+        clearTimeout(timeoutHandle);
+        message.respond({
+          returnValue: true,
+          data: JSON.stringify(ackPacket),
+        });
+      }
+    }, 500);
+
+    // 타임아웃 설정 (3초 후)
+    let timeoutHandle = setTimeout(() => {
+      clearInterval(checkInterval);
+      message.respond({
+        returnValue: false,
+        data: 'tcpClientRequest : timeout',
+      });
+    }, 3000);
+  }
+});
+
+service.register('tcpClient/sendPacketGetDeviceInfo', function (message) {
+  if (tcpClientRequest == null || tcpClientRequest.isRunning === false) {
+    message.respond({
+      returnValue: false,
+      data: 'tcpClientRequest : invalid',
+    });
+  } else {
+    const packet = createPacketCr2CmdGetDeviceInfo();
+    const req_id = packet.header.req_id;
+    tcpClientRequest.sendPacket(packet);
+    // 응답 대기
+    let checkInterval = setInterval(() => {
+      const ackPacket = tcpClientRequest.receivedPackets.find(
+        (p) => p.header.ack_id === req_id,
+      );
+      if (ackPacket) {
+        clearInterval(checkInterval);
+        clearTimeout(timeoutHandle);
+        message.respond({
+          returnValue: true,
+          data: JSON.stringify(ackPacket),
+        });
+      }
+    }, tcpClientAckCheckPeriod);
+
+    // 타임아웃
+    let timeoutHandle = setTimeout(() => {
+      clearInterval(checkInterval);
+      message.respond({
+        returnValue: false,
+        data: 'tcpClientRequest : timeout',
+      });
+    }, tcpClientAckCheckTimeout);
+  }
+});
+
 service.register('tcpClient/getNotifyPacket', function (message) {
   if (tcpClientNotify == null || tcpClientNotify.isRunning === false) {
     message.respond({
@@ -771,6 +831,12 @@ service.register('tcpClient/sendPacketActCode', function (message) {
       if (ackPacket) {
         clearInterval(checkInterval);
         clearTimeout(timeoutHandle);
+
+        /*
+        var res = DecryptionData(ackPacket.param);
+        ackPacket.actCodeResult = res;
+        */
+
         message.respond({
           returnValue: true,
           data: JSON.stringify(ackPacket),
@@ -1028,20 +1094,23 @@ class TcpClient {
               this.receivedPackets.push(resultJson);
             }
           } else if (this.name === 'notify') {
-            if (wss) {
-              wss.clients.forEach((client) => {
-                if (client.readyState === WebSocket.OPEN) {
-                  try {
-                    client.send(JSON.stringify(resultJson));
-                  } catch (error) {
-                    this.receivedPackets.push(
-                      'Failed to send message to client:',
-                      error,
-                    );
-                  }
-                }
-              });
+            // unitDistance, unitSpeed 변경인 경우, 사용자 설정값과 다르면 재설정
+            if (
+              resultJson.header.command === EyeMiniSdk.NOTIFYCMD_STATECHANGED
+            ) {
+              if (
+                userUnitDistance !== resultJson.param.statedata.unitDistance ||
+                userUnitSpeed !== resultJson.param.statedata.unitSpeed
+              ) {
+                const packet = createPacketSetUnit(
+                  userUnitDistance,
+                  userUnitSpeed,
+                );
+                tcpClientRequest.sendPacket(packet);
+              }
             }
+
+            wsSendMessage(JSON.stringify(resultJson));
             this.receivedPackets.push(resultJson);
           }
         }
@@ -1104,6 +1173,19 @@ function createPacketCr2Init() {
     0,
   );
   const header = new RequestHeader(EyeMiniSdk.JSON_EVENT_CR2INIT, 0, 0);
+  const packet = new RequestPacket(header, param);
+  return packet;
+}
+
+// unitDistance - 0x10(16): Yard / 0x11(17): Meter
+// unitSpeed - 0x20(32): mph / 0x21(33): m/s / 0x22(34): km/h /0x23(35): yd/s
+function createPacketSetUnit(unitDistance, unitSpeed) {
+  const param = { unitDistance: unitDistance, unitSpeed: unitSpeed };
+  const header = new RequestHeader(
+    EyeMiniSdk.JSON_EVENT_CR2CMD,
+    EyeMiniSdk.CR2CMD_SETUNIT,
+    0,
+  );
   const packet = new RequestPacket(header, param);
   return packet;
 }
@@ -1180,6 +1262,16 @@ function createPacketCr2CmdCalcTrajectoryFile(
   const header = new RequestHeader(
     EyeMiniSdk.JSON_EVENT_CR2CMD,
     EyeMiniSdk.CR2CMD_CALC_TRAJECTORY_FILE,
+    0,
+  );
+  const packet = new RequestPacket(header, param);
+  return packet;
+}
+function createPacketCr2CmdGetDeviceInfo() {
+  const param = null;
+  const header = new RequestHeader(
+    EyeMiniSdk.JSON_EVENT_CR2CMD,
+    EyeMiniSdk.CR2CMD_GET_DEVICE_INFO,
     0,
   );
   const packet = new RequestPacket(header, param);
@@ -1306,10 +1398,12 @@ function DecryptionData(data) {
   try {
     // Encryption key and IV (16 bytes each)
     const Compk2 = Buffer.from([
-      /* Replace with your 16-byte key */
+      0x47, 0x11, 0x05, 0x8e, 0x4c, 0x72, 0x62, 0x84, 0x33, 0x14, 0x55, 0x33,
+      0x9a, 0x02, 0x11, 0x25,
     ]);
     const iv2 = Buffer.from([
-      /* Replace with your 16-byte IV */
+      0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+      0x00, 0x00, 0x00, 0x00,
     ]);
 
     // Create AES decipher
@@ -1317,7 +1411,8 @@ function DecryptionData(data) {
     decipher.setAutoPadding(false);
 
     // Decrypt the payload
-    let decrypted = decipher.update(data.encryptedData0.Payload);
+    var payloadData = Buffer.from(data.encryptedData0.payload);
+    let decrypted = decipher.update(payloadData);
     decrypted = Buffer.concat([decrypted, decipher.final()]);
 
     // The ActCode structure has a size of 48 bytes
@@ -1339,8 +1434,8 @@ function DecryptionData(data) {
       const CreateValue = actCode.Act_Code[17];
       const CreatzRet = (CreateValue & (1 << 0)) !== 0;
 
-      console.warn(`EYE MINI ACT CODE 1 = [${UneekorRet}]`);
-      console.warn(`EYE MINI ACT CODE 2 = [${CreatzRet}]`);
+      //wsSendMessage(`EYE MINI ACT CODE 1 = [${UneekorRet}]`);
+      //wsSendMessage(`EYE MINI ACT CODE 2 = [${CreatzRet}]`);
 
       if (UneekorRet || CreatzRet) {
         return true;
@@ -1354,7 +1449,7 @@ function DecryptionData(data) {
 
     return false;
   } catch (e) {
-    console.warn(e.message);
+    wsSendMessage(e.message);
     return false;
   }
 }
@@ -1397,6 +1492,8 @@ let deviceConnectionStateTryCnt = 0; // 연결 상태 확인 시도 횟수 - 일
 let deviceConnectionSerialNumber = ''; // 연결 대상 eyemini serial number - ip 주소는 경우에 따라 바뀔 수 있음
 let deviceConnectionInterval = null; // 주기적으로 연결 상태 확인 - 단계에 따라 STATE 전환 수행
 let deviceConnectionConnctedTime = null; // 연결 성공 시각
+let userUnitDistance = EyeMiniSdk.CR2UNIT_DISTANCE_METER;
+let userUnitSpeed = EyeMiniSdk.CR2UNIT_SPEED_MS;
 
 service.register('device/connect', function (message) {
   // 연결 대상 serialNumber
@@ -1419,6 +1516,23 @@ service.register('device/connect', function (message) {
     return;
   }
   deviceConnectionSerialNumber = serialNumber;
+
+  if (message.payload && message.payload.unitDistance) {
+    userUnitDistance = message.payload.unitDistance;
+  }
+  if (message.payload && message.payload.unitSpeed) {
+    userUnitSpeed = message.payload.unitSpeed;
+  }
+  if (userUnitDistance < EyeMiniSdk.CR2UNIT_DISTANCE_YARD) {
+    userUnitDistance = EyeMiniSdk.CR2UNIT_DISTANCE_YARD;
+  } else if (userUnitDistance > EyeMiniSdk.CR2UNIT_DISTANCE_METER) {
+    userUnitDistance = EyeMiniSdk.CR2UNIT_DISTANCE_METER;
+  }
+  if (userUnitSpeed < EyeMiniSdk.CR2UNIT_SPEED_MPH) {
+    userUnitSpeed = EyeMiniSdk.CR2UNIT_SPEED_MPH;
+  } else if (userUnitSpeed > EyeMiniSdk.CR2UNIT_SPEED_YDS) {
+    userUnitSpeed = EyeMiniSdk.CR2UNIT_SPEED_YDS;
+  }
 
   // 이미 연결 시도중인 경우 중지
   if (deviceConnectionRunning) {
@@ -1511,6 +1625,10 @@ function checkDeviceConnection() {
         const req_id = packet.header.req_id;
         tcpClientRequest.sendPacket(packet);
 
+        deviceConnectionState =
+          EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_INIT_WAIT;
+        deviceConnectionStateTryCnt = 0;
+
         // 응답 대기 (3초 타임아웃 내에 0.5초마다 확인)
         let checkInterval = setInterval(() => {
           const ackPacket = tcpClientRequest.receivedPackets.find(
@@ -1518,32 +1636,26 @@ function checkDeviceConnection() {
           );
           if (ackPacket) {
             clearInterval(checkInterval);
-            //clearTimeout(timeoutHandle);
-            // 수신 성공
 
-            wsSendMessage(
-              JSON.stringify({
-                device_connection: true,
-                message: 'init_received',
-              }),
-            );
-            deviceConnectionRunning = false;
+            /*
+            // 수신 성공
+            deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_INIT_SUCCESS;
             deviceConnectionStateTryCnt = 0;
+            */
+
+            // ACT CODE 확인 과정 생략 - 항상 성공
             deviceConnectionState =
-              EyeMiniSdk.DEVICE_CONNECTION_STATE_CONNECTED;
-            deviceConnectionConnctedTime = Date.now();
-            startGetSensorStatus();
+              EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_ACT_CODE_SUCCESS;
+            deviceConnectionStateTryCnt = 0;
+          }
+
+          if (
+            deviceConnectionState !==
+            EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_INIT_WAIT
+          ) {
+            clearInterval(checkInterval);
           }
         }, 500);
-
-        /*
-        // 타임아웃 설정 (3초 후)
-        let timeoutHandle = setTimeout(() => {
-          clearInterval(checkInterval);
-          // 응답 수신 실패
-
-        }, 3000);
-        */
       } else {
         deviceConnectionStateTryCnt++;
         // timeout
@@ -1558,6 +1670,164 @@ function checkDeviceConnection() {
           deviceConnectionState =
             EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
         }
+      }
+      break;
+    case EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_INIT_WAIT:
+      deviceConnectionStateTryCnt++;
+      // timeout
+      if (deviceConnectionStateTryCnt > 10) {
+        wsSendMessage(
+          JSON.stringify({
+            device_connection: false,
+            message: 'tcp_client_cannot_init',
+          }),
+        );
+        deviceConnectionRunning = false;
+        deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+      }
+      break;
+    case EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_INIT_SUCCESS:
+      if (
+        tcpClientRequest != null &&
+        tcpClientNotify != null &&
+        tcpClientRequest.isRunning &&
+        tcpClientNotify.isRunning
+      ) {
+        // tcp get act code 전송
+        const packet = createPacketGetActCode();
+        const req_id = packet.header.req_id;
+        tcpClientRequest.sendPacket(packet);
+
+        deviceConnectionState =
+          EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_ACT_CODE_WAIT;
+        deviceConnectionStateTryCnt = 0;
+
+        // 응답 대기 (3초 타임아웃 내에 0.5초마다 확인)
+        let checkInterval = setInterval(() => {
+          const ackPacket = tcpClientRequest.receivedPackets.find(
+            (p) => p.header.ack_id === req_id,
+          );
+          if (ackPacket) {
+            clearInterval(checkInterval);
+            var res = DecryptionData(ackPacket.param);
+            if (res) {
+              // ACT CODE 확인 완료
+              deviceConnectionState =
+                EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_ACT_CODE_SUCCESS;
+              deviceConnectionStateTryCnt = 0;
+            }
+          }
+
+          if (
+            deviceConnectionState !==
+            EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_ACT_CODE_WAIT
+          ) {
+            clearInterval(checkInterval);
+          }
+        }, 500);
+      } else {
+        deviceConnectionStateTryCnt++;
+        // timeout
+        if (deviceConnectionStateTryCnt > 10) {
+          wsSendMessage(
+            JSON.stringify({
+              device_connection: false,
+              message: 'tcp_client_cannot_send_act_code',
+            }),
+          );
+          deviceConnectionRunning = false;
+          deviceConnectionState =
+            EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+        }
+      }
+      break;
+    case EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_ACT_CODE_WAIT:
+      deviceConnectionStateTryCnt++;
+      // timeout
+      if (deviceConnectionStateTryCnt > 10) {
+        wsSendMessage(
+          JSON.stringify({
+            device_connection: false,
+            message: 'tcp_client_cannot_get_act_code',
+          }),
+        );
+        deviceConnectionRunning = false;
+        deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+      }
+      break;
+    case EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_ACT_CODE_SUCCESS:
+      if (
+        tcpClientRequest != null &&
+        tcpClientNotify != null &&
+        tcpClientRequest.isRunning &&
+        tcpClientNotify.isRunning
+      ) {
+        // tcp get set unit 전송
+        const packet = createPacketSetUnit(userUnitDistance, userUnitSpeed);
+        const req_id = packet.header.req_id;
+        tcpClientRequest.sendPacket(packet);
+
+        deviceConnectionState =
+          EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_SET_UNIT_WAIT;
+        deviceConnectionStateTryCnt = 0;
+
+        // 응답 대기 (3초 타임아웃 내에 0.5초마다 확인)
+        let checkInterval = setInterval(() => {
+          const ackPacket = tcpClientRequest.receivedPackets.find(
+            (p) => p.header.ack_id === req_id,
+          );
+          if (ackPacket) {
+            clearInterval(checkInterval);
+
+            // 연결 성공
+            wsSendMessage(
+              JSON.stringify({
+                device_connection: true,
+                message: 'set_unit_success',
+              }),
+            );
+            deviceConnectionRunning = false;
+            deviceConnectionStateTryCnt = 0;
+            deviceConnectionState =
+              EyeMiniSdk.DEVICE_CONNECTION_STATE_CONNECTED;
+            deviceConnectionConnctedTime = Date.now();
+            startGetSensorStatus();
+          }
+          if (
+            deviceConnectionState !==
+            EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_SET_UNIT_WAIT
+          ) {
+            clearInterval(checkInterval);
+          }
+        }, 500);
+      } else {
+        deviceConnectionStateTryCnt++;
+        // timeout
+        if (deviceConnectionStateTryCnt > 10) {
+          wsSendMessage(
+            JSON.stringify({
+              device_connection: false,
+              message: 'tcp_client_cannot_set_unit',
+            }),
+          );
+          deviceConnectionRunning = false;
+          deviceConnectionState =
+            EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
+        }
+      }
+      break;
+    case EyeMiniSdk.DEVICE_CONNECTION_STATE_TCP_SET_UNIT_WAIT:
+      deviceConnectionStateTryCnt++;
+      // timeout
+      if (deviceConnectionStateTryCnt > 10) {
+        wsSendMessage(
+          JSON.stringify({
+            device_connection: false,
+            message: 'tcp_client_cannot_set_unit',
+          }),
+        );
+        deviceConnectionRunning = false;
+        deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
       }
       break;
     case EyeMiniSdk.DEVICE_CONNECTION_STATE_CONNECTED:
@@ -1684,6 +1954,7 @@ service.register('device/disconnect', function (message) {
 
   deviceConnectionState = EyeMiniSdk.DEVICE_CONNECTION_STATE_DISCONNECTED;
   deviceConnectionStateTryCnt = 0;
+  eyeminiDevices = [];
 
   message.respond({
     returnValue: true,

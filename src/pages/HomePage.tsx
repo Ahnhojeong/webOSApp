@@ -168,10 +168,18 @@ const HomePage = () => {
       onSuccess: showSuccess,
     });
   };
-  const callJsServiceDeviceConnect = (serialNumber: string) => {
+  const callJsServiceDeviceConnect = (
+    serialNumber: string,
+    unitDistance: number,
+    unitSpeed: number,
+  ) => {
     window.webOS.service.request('luna://com.hojeong.app.service/', {
       method: 'device/connect',
-      parameters: { serialNumber: serialNumber },
+      parameters: {
+        serialNumber: serialNumber,
+        unitDistance: unitDistance,
+        unitSpeed: unitSpeed,
+      },
       onFailure: showFailure,
       onSuccess: showSuccess,
     });
@@ -275,6 +283,17 @@ const HomePage = () => {
       onSuccess: showSuccess,
     });
   };
+  const callJsServiceTcpSetUnit = (unitDistance: number, unitSpeed: number) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketSetUnit',
+      parameters: {
+        unitDistance: unitDistance,
+        unitSpeed: unitSpeed,
+      },
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
 
   const callJsServiceTcpGetNotifyPacket = () => {
     window.webOS.service.request('luna://com.hojeong.app.service/', {
@@ -309,6 +328,44 @@ const HomePage = () => {
       onFailure: showFailure,
       onSuccess: showSuccess,
     });
+  };
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const handleStartWebcam = async () => {
+    window.webOS.service.request('luna://com.webos.service.camera', {
+      method: 'getInfo',
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        console.log('webcam start success');
+      }
+    } catch (err) {
+      console.error('Error accessing the webcam: ', err);
+    }
+
+    // 웹캠 접근 권한 요청 및 영상 출력
+    navigator.mediaDevices
+      .getUserMedia({ video: true })
+      .then(function (stream) {
+        const videoElement = document.getElementById(
+          'webcamVideo',
+        ) as HTMLVideoElement;
+        videoElement.srcObject = stream;
+        videoElement.play();
+        console.log('webcam start success 2');
+      })
+      .catch(function (error) {
+        console.error('웹캠 접근 에러:', error);
+      });
   };
 
   return (
@@ -529,10 +586,12 @@ const HomePage = () => {
           </Button>
 
           <Button
-            onClick={() => callJsServiceDeviceConnect('501000008535')}
+            onClick={
+              () => callJsServiceDeviceConnect('501000008535', 17, 33) //'501000026810'
+            }
             className="mb-4"
           >
-            device/connect - serialNumber
+            device/connect - serialNumber, unit
           </Button>
 
           <Button
@@ -548,11 +607,43 @@ const HomePage = () => {
           >
             CalcTrajectoryFile
           </Button>
+          <Button
+            onClick={() => callJsServiceTcpSetUnit(17, 33)}
+            className="mb-4"
+          >
+            set unit
+          </Button>
+
+          <Button
+            onClick={() => callJsServiceTcp('sendPacketGetDeviceInfo')}
+            className="mb-4"
+          >
+            get device info
+            {/**
+             * returnValue: boolean,
+             * data: "{"header":{"status":0,"answer":177,"command":188,"ack_id":8,"length":148},"param":{"batteryInfo":{"status":3,"status_string":"fully charged","battery_percentage":100,"remain_capacity":11840,"full_capacity":11840,"cycle_count":65}},"tcp_client_received":1731999247567}"
+             */}
+          </Button>
         </div>
         <div style={{ width: '100%', wordBreak: 'break-all' }}>
           {resNotify?.message}
         </div>
       </div>
+
+      <div>
+        <h1>Webcam Feed</h1>
+        <Button onClick={handleStartWebcam} className="mb-4">
+          Start Webcam
+        </Button>
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          style={{ width: '300px', maxWidth: '200px' }}
+        />
+      </div>
+
+      <video id="webcamVideo"></video>
     </div>
   );
 };
