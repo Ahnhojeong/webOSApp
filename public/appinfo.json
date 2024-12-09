@@ -14,5 +14,6 @@
     "notification.operation",
     "com.hojeong.app.service.group"
   ],
-  "supportTouchMode": "full"
+  "supportTouchMode": "full",
+  "useCamera": true
 }

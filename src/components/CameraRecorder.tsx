@@ -94,26 +94,26 @@ const CameraRecorder = () => {
           setError(null);
 
           // MediaRecorder 초기화
-          const recorder = new MediaRecorder(mediaStream, {
-            mimeType: 'video/webm;codecs=vp8,opus',
-          });
+          // const recorder = new MediaRecorder(mediaStream, {
+          //   mimeType: 'video/webm;codecs=vp8,opus',
+          // });
 
-          mediaRecorderRef.current = recorder;
+          // mediaRecorderRef.current = recorder;
 
-          recorder.onstart = () => {
-            setRecordingStatus('Recording started');
-            setRecordedChunks([]);
-          };
+          // recorder.onstart = () => {
+          //   setRecordingStatus('Recording started');
+          //   setRecordedChunks([]);
+          // };
 
-          recorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-              setRecordedChunks((chunks) => [...chunks, event.data]);
-            }
-          };
+          // recorder.ondataavailable = (event) => {
+          //   if (event.data.size > 0) {
+          //     setRecordedChunks((chunks) => [...chunks, event.data]);
+          //   }
+          // };
 
-          recorder.onstop = () => {
-            setRecordingStatus('Recording stopped');
-          };
+          // recorder.onstop = () => {
+          //   setRecordingStatus('Recording stopped');
+          // };
         } catch (error) {
           console.log('Error accessing camera:', error);
           setError(
