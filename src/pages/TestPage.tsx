@@ -1,12 +1,12 @@
-import CameraRecorder from '@/components/CameraRecorder';
 import { FPSMeter } from '@/components/FPSMeter';
-import Game from '@/components/Game';
+import { RiveDemo, UrlDemo } from '@/components/RiveApp';
 
 function TestPage() {
   return (
     <div className="min-h-screen bg-gray-100 py-8">
-      {/* <CameraRecorder /> */}
-      <Game />
+      <div className="RiveContainer">
+        <UrlDemo />
+      </div>
       <FPSMeter />
     </div>
   );
