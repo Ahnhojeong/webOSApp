@@ -139,11 +139,6 @@ const HomePage = () => {
     }
   }, [callService]);
 
-  useEffect(() => {
-    // 사전 준비 사항이 완료되었다는 전제로 EYEMINI 연결 동작을 진행
-    serviceOn();
-  }, [serviceOn]);
-
   const callJsServiceUdp = (value: string) => {
     window.webOS.service.request('luna://com.hojeong.app.service/', {
       method: 'udpClient/' + value,
@@ -172,6 +167,11 @@ const HomePage = () => {
     serialNumber: string,
     unitDistance: number,
     unitSpeed: number,
+    rightLeft: number,
+    club: number,
+    allowTee: number,
+    allowIron: number,
+    allowPutter: number,
   ) => {
     window.webOS.service.request('luna://com.hojeong.app.service/', {
       method: 'device/connect',
@@ -179,6 +179,11 @@ const HomePage = () => {
         serialNumber: serialNumber,
         unitDistance: unitDistance,
         unitSpeed: unitSpeed,
+        rightLeft: rightLeft,
+        club: club,
+        allowTee: allowTee,
+        allowIron: allowIron,
+        allowPutter: allowPutter,
       },
       onFailure: showFailure,
       onSuccess: showSuccess,
@@ -289,6 +294,43 @@ const HomePage = () => {
       parameters: {
         unitDistance: unitDistance,
         unitSpeed: unitSpeed,
+      },
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+
+  const callJsServiceTcpSetRightLeft = (rightLeft: number) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketSetRightLeft',
+      parameters: {
+        rightLeft: rightLeft,
+      },
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceTcpUseClub = (club: number) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketUseClub',
+      parameters: {
+        club: club,
+      },
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceTcpAreaAllow = (
+    allowTee: number,
+    allowIron: number,
+    allowPutter: number,
+  ) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketAreaAllow',
+      parameters: {
+        allowTee: allowTee,
+        allowIron: allowIron,
+        allowPutter: allowPutter,
       },
       onFailure: showFailure,
       onSuccess: showSuccess,
@@ -587,7 +629,17 @@ const HomePage = () => {
 
           <Button
             onClick={
-              () => callJsServiceDeviceConnect('501000008535', 17, 33) //'501000026810'
+              () =>
+                callJsServiceDeviceConnect(
+                  '501000008535',
+                  16,
+                  33,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                ) //'501000026810'
             }
             className="mb-4"
           >
@@ -613,16 +665,27 @@ const HomePage = () => {
           >
             set unit
           </Button>
+          <Button
+            onClick={() => callJsServiceTcpSetRightLeft(1)}
+            className="mb-4"
+          >
+            Set Right/Left
+          </Button>
+          <Button onClick={() => callJsServiceTcpUseClub(2)} className="mb-4">
+            Use Club
+          </Button>
+          <Button
+            onClick={() => callJsServiceTcpAreaAllow(1, 0, 0)}
+            className="mb-4"
+          >
+            Set Area Allow
+          </Button>
 
           <Button
             onClick={() => callJsServiceTcp('sendPacketGetDeviceInfo')}
             className="mb-4"
           >
             get device info
-            {/**
-             * returnValue: boolean,
-             * data: "{"header":{"status":0,"answer":177,"command":188,"ack_id":8,"length":148},"param":{"batteryInfo":{"status":3,"status_string":"fully charged","battery_percentage":100,"remain_capacity":11840,"full_capacity":11840,"cycle_count":65}},"tcp_client_received":1731999247567}"
-             */}
           </Button>
         </div>
         <div style={{ width: '100%', wordBreak: 'break-all' }}>

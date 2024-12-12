@@ -7,8 +7,14 @@ const Service = require('webos-service');
 const service = new Service(pkgInfo.name);
 let greeting = 'Hello, World!';
 const WebSocket = require('ws');
+const http = require('http');
+//const express = require('express');
+//const path = require('path');
+
+//const app = express();
 
 const wsPort = 9000;
+//const webglPort = 8000;
 
 const logHeader = `[${pkgInfo.name}]`;
 
@@ -17,6 +23,24 @@ let wss = null;
 // heartbeat 변수
 let heartbeatSubscription = null;
 let isMonitoring = false;
+
+/*
+// webgl
+const webglPath = path.join(__dirname, './webgl'); // webgl 경로
+app.use('/webgl', express.static(webglPath)); // 정적 파일 제공하기 위한 미들웨어
+
+app.get('/front', (req, res) => {
+  res.sendFile(path.join(webglPath, 'front/index.html'));
+});
+
+app.get('/trajectory', (req, res) => {
+  res.sendFile(path.join(webglPath, 'trajectory/index.html'));
+});
+
+http.createServer(app).listen(webglPort, () => {
+  console.log(`Server runiing ${webglPort}`);
+});
+*/
 
 // Sample Test Code1 (임시)
 let name = 'World';
@@ -728,7 +752,7 @@ service.register('tcpClient/sendPacketSetUnit', function (message) {
     const req_id = packet.header.req_id;
     tcpClientRequest.sendPacket(packet);
 
-    // 응답 대기 (3초 타임아웃 내에 0.5초마다 확인)
+    // 응답 대기
     let checkInterval = setInterval(() => {
       const ackPacket = tcpClientRequest.receivedPackets.find(
         (p) => p.header.ack_id === req_id,
@@ -741,16 +765,164 @@ service.register('tcpClient/sendPacketSetUnit', function (message) {
           data: JSON.stringify(ackPacket),
         });
       }
-    }, 500);
+    }, tcpClientAckCheckPeriod);
 
-    // 타임아웃 설정 (3초 후)
+    // 타임아웃 설정
     let timeoutHandle = setTimeout(() => {
       clearInterval(checkInterval);
       message.respond({
         returnValue: false,
         data: 'tcpClientRequest : timeout',
       });
-    }, 3000);
+    }, tcpClientAckCheckTimeout);
+  }
+});
+
+service.register('tcpClient/sendPacketSetRightLeft', function (message) {
+  if (tcpClientRequest == null || tcpClientRequest.isRunning === false) {
+    message.respond({
+      returnValue: false,
+      data: 'tcpClientRequest : invalid',
+    });
+  } else {
+    const rightLeft = message.payload.rightLeft || 0;
+
+    userRightLeft = rightLeft;
+
+    if (userRightLeft < 0) {
+      userRightLeft = 0;
+    } else if (userRightLeft > 1) {
+      userRightLeft = 1;
+    }
+
+    const packet = createPacketSetRightLeft(userRightLeft);
+    const req_id = packet.header.req_id;
+    tcpClientRequest.sendPacket(packet);
+
+    // 응답 대기
+    let checkInterval = setInterval(() => {
+      const ackPacket = tcpClientRequest.receivedPackets.find(
+        (p) => p.header.ack_id === req_id,
+      );
+      if (ackPacket) {
+        clearInterval(checkInterval);
+        clearTimeout(timeoutHandle);
+        message.respond({
+          returnValue: true,
+          data: JSON.stringify(ackPacket),
+        });
+      }
+    }, tcpClientAckCheckPeriod);
+
+    // 타임아웃 설정
+    let timeoutHandle = setTimeout(() => {
+      clearInterval(checkInterval);
+      message.respond({
+        returnValue: false,
+        data: 'tcpClientRequest : timeout',
+      });
+    }, tcpClientAckCheckTimeout);
+  }
+});
+
+service.register('tcpClient/sendPacketUseClub', function (message) {
+  if (tcpClientRequest == null || tcpClientRequest.isRunning === false) {
+    message.respond({
+      returnValue: false,
+      data: 'tcpClientRequest : invalid',
+    });
+  } else {
+    const club = message.payload.club || 0;
+
+    if (club === 0) {
+      message.respond({
+        returnValue: false,
+        data: 'tcpClientRequest : invalid payload',
+      });
+      return;
+    }
+    userClub = club;
+
+    if (userClub < 1) {
+      userClub = 1;
+    }
+
+    const packet = createPacketUseClub(userClub);
+    const req_id = packet.header.req_id;
+    tcpClientRequest.sendPacket(packet);
+
+    // 응답 대기
+    let checkInterval = setInterval(() => {
+      const ackPacket = tcpClientRequest.receivedPackets.find(
+        (p) => p.header.ack_id === req_id,
+      );
+      if (ackPacket) {
+        clearInterval(checkInterval);
+        clearTimeout(timeoutHandle);
+        message.respond({
+          returnValue: true,
+          data: JSON.stringify(ackPacket),
+        });
+      }
+    }, tcpClientAckCheckPeriod);
+
+    // 타임아웃 설정
+    let timeoutHandle = setTimeout(() => {
+      clearInterval(checkInterval);
+      message.respond({
+        returnValue: false,
+        data: 'tcpClientRequest : timeout',
+      });
+    }, tcpClientAckCheckTimeout);
+  }
+});
+
+service.register('tcpClient/sendPacketAreaAllow', function (message) {
+  if (tcpClientRequest == null || tcpClientRequest.isRunning === false) {
+    message.respond({
+      returnValue: false,
+      data: 'tcpClientRequest : invalid',
+    });
+  } else {
+    const allowTee = message.payload.allowTee || 0;
+    const allowIron = message.payload.allowIron || 0;
+    const allowPutter = message.payload.allowPutter || 0;
+
+    userAllowTee = allowTee;
+    userAllowIron = allowIron;
+    userAllowPutter = allowPutter;
+
+    const packet = createPacketAreaAllow(
+      userAllowTee,
+      userAllowIron,
+      userAllowPutter,
+    );
+    const req_id = packet.header.req_id;
+    tcpClientRequest.sendPacket(packet);
+
+    // 응답 대기
+    let checkInterval = setInterval(() => {
+      const ackPacket = tcpClientRequest.receivedPackets.find(
+        (p) => p.header.ack_id === req_id,
+      );
+      if (ackPacket) {
+        clearInterval(checkInterval);
+        clearTimeout(timeoutHandle);
+        message.respond({
+          returnValue: true,
+          data: JSON.stringify(ackPacket),
+        });
+      }
+    }, tcpClientAckCheckPeriod);
+
+    // 타임아웃 설정
+    let timeoutHandle = setTimeout(() => {
+      clearInterval(checkInterval);
+      message.respond({
+        returnValue: false,
+        data: 'tcpClientRequest : timeout',
+      });
+    }, tcpClientAckCheckTimeout);
   }
 });
 
@@ -1107,8 +1279,94 @@ class TcpClient {
                   userUnitSpeed,
                 );
                 tcpClientRequest.sendPacket(packet);
+              } else if (
+                userRightLeft !== resultJson.param.statedata.rightleft
+              ) {
+                const packet = createPacketSetRightLeft(userRightLeft);
+                tcpClientRequest.sendPacket(packet);
+              } else if (userClub !== resultJson.param.statedata.clubtype) {
+                const packet = createPacketUseClub(userClub);
+                tcpClientRequest.sendPacket(packet);
+              } else if (
+                userAllowTee !== resultJson.param.statedata.allowTee ||
+                userAllowIron !== resultJson.param.statedata.allowIron ||
+                userAllowPutter !== resultJson.param.statedata.allowPutter
+              ) {
+                const packet = createPacketAreaAllow(
+                  userAllowTee,
+                  userAllowIron,
+                  userAllowPutter,
+                );
+                tcpClientRequest.sendPacket(packet);
               }
             }
+
+            // goodshot 이벤트인 경우 샷 데이터 traj 요청
+            // if (resultJson.header.command === EyeMiniSdk.NOTIFYCMD_GOODSHOT) {
+            //   serviceLogMessage('NOTIFYCMD_GOODSHOT');
+            //   if (
+            //     tcpClientRequest == null ||
+            //     tcpClientRequest.isRunning === false
+            //   ) {
+            //     serviceLogMessage(
+            //       'NOTIFYCMD_GOODSHOT - tcpClientRequest not running',
+            //     );
+            //   } else {
+            //     const shotData = resultJson.param.shotdataEX1;
+            //     const ballspeedX10 =
+            //       Math.round(shotData.ballspeedx1000 / 100) || 0;
+            //     const clubspeed_BX10 =
+            //       Math.round(shotData.clubspeedX1000 / 100) || 0;
+            //     const clubspeed_AX10 =
+            //       Math.round(shotData.clubspeedX1000 / 100) || 0;
+            //     const clubpathX10 =
+            //       Math.round(shotData.clubpathX1000 / 100) || 0;
+            //     const clubfaceangleX10 =
+            //       Math.round(shotData.faceangleX1000 / 100) || 0;
+            //     const sidespin = Math.round(shotData.sidespinX1000 / 1000) || 0;
+            //     const backspin = Math.round(shotData.backspinX1000 / 1000) || 0;
+            //     const azimuthX10 = Math.round(shotData.azimuthX1000 / 100) || 0;
+            //     const inclineX10 = Math.round(shotData.inclineX1000 / 100) || 0;
+
+            //     const packet = createPacketCr2CmdCalcTrajectoryFile(
+            //       ballspeedX10,
+            //       clubspeed_BX10,
+            //       clubspeed_AX10,
+            //       clubpathX10,
+            //       clubfaceangleX10,
+            //       sidespin,
+            //       backspin,
+            //       azimuthX10,
+            //       inclineX10,
+            //     );
+            //     const req_id = packet.header.req_id;
+            //     tcpClientRequest.sendPacket(packet);
+
+            //     // 응답 대기
+            //     let checkInterval = setInterval(() => {
+            //       const ackPacket = tcpClientRequest.receivedPackets.find(
+            //         (p) => p.header.ack_id === req_id,
+            //       );
+            //       if (ackPacket) {
+            //         clearInterval(checkInterval);
+            //         clearTimeout(timeoutHandle);
+            //         wsSendMessage(JSON.stringify(ackPacket));
+            //         if (ackPacket.header.status === 0) {
+            //           const traj_file_path = ackPacket.param.traj_file_path;
+            //           getTrajFromPath(traj_file_path);
+            //         }
+            //       }
+            //     }, tcpClientAckCheckPeriod);
+
+            //     // 타임아웃 설정
+            //     let timeoutHandle = setTimeout(() => {
+            //       clearInterval(checkInterval);
+            //       serviceLogMessage(
+            //         'tcpClientRequest : timeout - CR2CMD_CALC_TRAJECTORY_FILE',
+            //       );
+            //     }, tcpClientAckCheckTimeout);
+            //   }
+            // }
 
             wsSendMessage(JSON.stringify(resultJson));
             this.receivedPackets.push(resultJson);
@@ -1176,9 +1434,6 @@ function createPacketCr2Init() {
   const packet = new RequestPacket(header, param);
   return packet;
 }
-
-// unitDistance - 0x10(16): Yard / 0x11(17): Meter
-// unitSpeed - 0x20(32): mph / 0x21(33): m/s / 0x22(34): km/h /0x23(35): yd/s
 function createPacketSetUnit(unitDistance, unitSpeed) {
   const param = { unitDistance: unitDistance, unitSpeed: unitSpeed };
   const header = new RequestHeader(
@@ -1189,6 +1444,42 @@ function createPacketSetUnit(unitDistance, unitSpeed) {
   const packet = new RequestPacket(header, param);
   return packet;
 }
+
+function createPacketSetRightLeft(rightLeft) {
+  const param = { rightLeft: rightLeft };
+  const header = new RequestHeader(
+    EyeMiniSdk.JSON_EVENT_CR2CMD,
+    EyeMiniSdk.CR2CMD_SETRIGHTLEFT,
+    0,
+  );
+  const packet = new RequestPacket(header, param);
+  return packet;
+}
+function createPacketUseClub(club) {
+  const param = { club: club };
+  const header = new RequestHeader(
+    EyeMiniSdk.JSON_EVENT_CR2CMD,
+    EyeMiniSdk.CR2CMD_USECLUB,
+    0,
+  );
+  const packet = new RequestPacket(header, param);
+  return packet;
+}
+function createPacketAreaAllow(allowTee, allowIron, allowPutter) {
+  const param = {
+    allowTee: allowTee,
+    allowIron: allowIron,
+    allowPutter: allowPutter,
+  };
+  const header = new RequestHeader(
+    EyeMiniSdk.JSON_EVENT_CR2CMD,
+    EyeMiniSdk.CR2CMD_AREAALLOW,
+    0,
+  );
+  const packet = new RequestPacket(header, param);
+  return packet;
+}
+
 function createPacketCr2CmdSetWifilist() {
   const param = null;
   const header = new RequestHeader(
@@ -1494,6 +1785,11 @@ let deviceConnectionInterval = null; // 주기적으로 연결 상태 확인 - �
 let deviceConnectionConnctedTime = null; // 연결 성공 시각
 let userUnitDistance = EyeMiniSdk.CR2UNIT_DISTANCE_METER;
 let userUnitSpeed = EyeMiniSdk.CR2UNIT_SPEED_MS;
+let userRightLeft = 0; // 우타 = 0, 좌타 = 1
+let userClub = 1;
+let userAllowTee = 0;
+let userAllowIron = 0;
+let userAllowPutter = 1;
 
 service.register('device/connect', function (message) {
   // 연결 대상 serialNumber
@@ -1532,6 +1828,24 @@ service.register('device/connect', function (message) {
     userUnitSpeed = EyeMiniSdk.CR2UNIT_SPEED_MPH;
   } else if (userUnitSpeed > EyeMiniSdk.CR2UNIT_SPEED_YDS) {
     userUnitSpeed = EyeMiniSdk.CR2UNIT_SPEED_YDS;
+  }
+
+  if (message.payload) {
+    if ('rightLeft' in message.payload) {
+      userRightLeft = message.payload.rightLeft;
+    }
+    if ('club' in message.payload) {
+      userClub = message.payload.club;
+    }
+    if ('allowTee' in message.payload) {
+      userAllowTee = message.payload.allowTee;
+    }
+    if ('allowIron' in message.payload) {
+      userAllowIron = message.payload.allowIron;
+    }
+    if ('allowPutter' in message.payload) {
+      userAllowPutter = message.payload.allowPutter;
+    }
   }
 
   // 이미 연결 시도중인 경우 중지
@@ -1962,10 +2276,34 @@ service.register('device/disconnect', function (message) {
   });
 });
 
-// device/disconnect
+function getTrajFromPath(traj_file_path) {
+  const url =
+    'http://' +
+    deviceConnectionCurrentDevice.networkInfo.ipaddr +
+    '/' +
+    traj_file_path;
+  serviceLogMessage(url);
+  http
+    .get(url, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        var jsonData = JSON.parse(data);
+        jsonData.http_from = EyeMiniSdk.CR2CMD_CALC_TRAJECTORY_FILE;
+        jsonData.http_url = url;
+        wsSendMessage(JSON.stringify(jsonData));
+      });
+    })
+    .on('error', (err) => {
+      serviceLogMessage(err);
+    });
+}
 
-// device/status
-
+function serviceLogMessage(msg) {
+  wsSendMessage(JSON.stringify({ service_log_message: msg }));
+}
 function wsSendMessage(msg) {
   if (wss) {
     wss.clients.forEach((client) => {
