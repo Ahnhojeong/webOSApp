@@ -163,6 +163,24 @@ const HomePage = () => {
       onSuccess: showSuccess,
     });
   };
+  const callJsServiceDeviceSetWifi = (
+    encryption: string,
+    ssid: string,
+    password: string,
+    type: number,
+  ) => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'device/setWifi',
+      parameters: {
+        encryption: encryption,
+        ssid: ssid,
+        password: password,
+        type: type,
+      },
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
   const callJsServiceDeviceConnect = (
     serialNumber: string,
     unitDistance: number,
@@ -244,6 +262,14 @@ const HomePage = () => {
   const callJsServiceTcpSendPacketSetWifilist = () => {
     window.webOS.service.request('luna://com.hojeong.app.service/', {
       method: 'tcpClient/sendPacketSetWifilist',
+      parameters: {},
+      onFailure: showFailure,
+      onSuccess: showSuccess,
+    });
+  };
+  const callJsServiceTcpSendPacketGetWifi = () => {
+    window.webOS.service.request('luna://com.hojeong.app.service/', {
+      method: 'tcpClient/sendPacketGetWifi',
       parameters: {},
       onFailure: showFailure,
       onSuccess: showSuccess,
@@ -549,6 +575,12 @@ const HomePage = () => {
             SetWifilist
           </Button>
           <Button
+            onClick={() => callJsServiceTcpSendPacketGetWifi()}
+            className="mb-4"
+          >
+            GetWifi
+          </Button>
+          <Button
             onClick={() => callJsServiceTcpSendPacketGetWifilist()}
             className="mb-4"
           >
@@ -626,7 +658,30 @@ const HomePage = () => {
           >
             device/connect
           </Button>
-
+          <Button
+            onClick={() =>
+              callJsServiceDeviceSetWifi('on', 'shin_5G', 'ht_01071697404', 1)
+            }
+            className="mb-4"
+          >
+            device/setWifi
+          </Button>
+          <Button
+            onClick={() =>
+              callJsServiceDeviceSetWifi('on', 'ht_fold_3', 'jjdw4404', 1)
+            }
+            className="mb-4"
+          >
+            device/setWifi(2)
+          </Button>
+          <Button
+            onClick={() =>
+              callJsServiceDeviceSetWifi('on', 'shin_2G', 'ht_01071697404', 1)
+            }
+            className="mb-4"
+          >
+            device/setWifi(3)
+          </Button>
           <Button
             onClick={
               () =>

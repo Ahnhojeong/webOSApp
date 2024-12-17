@@ -389,21 +389,6 @@ service.register('udpClient/devices', function (message) {
   }
 });
 
-service.register('udpClient/getMessage', function (message) {
-  if (udpClient == null || udpClientRunning === false) {
-    message.respond({
-      returnValue: false,
-      data: 'udpClient : invalid',
-    });
-  } else {
-    message.respond({
-      returnValue: true,
-      data: udpMessage,
-      updated: udpMessageUpdated,
-    });
-  }
-});
-
 service.register('udpClient/stop', function (message) {
   if (udpClient != null) {
     udpClient.close();
@@ -456,6 +441,13 @@ service.register('tcpClient/start', function (message) {
       returnValue: false,
       data: 'tcpClient : Start fail',
     });
+  }
+
+  const existingIndex = eyeminiDevices.findIndex(
+    (device) => device.networkInfo.ipaddr === ip,
+  );
+  if (existingIndex >= 0) {
+    deviceConnectionSerialNumber = eyeminiDevices[existingIndex].serialNumber;
   }
 
   tcpClientRequest = new TcpClient('request');
@@ -548,6 +540,42 @@ service.register('tcpClient/sendPacketSetWifilist', function (message) {
     const req_id = packet.header.req_id;
     tcpClientRequest.sendPacket(packet);
 
+    // 응답 대기 (3초 타임아웃 내에 0.5초마다 확인)
+    let checkInterval = setInterval(() => {
+      const ackPacket = tcpClientRequest.receivedPackets.find(
+        (p) => p.header.ack_id === req_id,
+      );
+      if (ackPacket) {
+        clearInterval(checkInterval);
+        clearTimeout(timeoutHandle);
+        message.respond({
+          returnValue: true,
+          data: JSON.stringify(ackPacket),
+        });
+      }
+    }, 500);
+
+    // 타임아웃 설정 (3초 후)
+    let timeoutHandle = setTimeout(() => {
+      clearInterval(checkInterval);
+      message.respond({
+        returnValue: false,
+        data: 'tcpClientRequest : timeout',
+      });
+    }, 3000);
+  }
+});
+
+service.register('tcpClient/sendPacketGetWifi', function (message) {
+  if (tcpClientRequest == null || tcpClientRequest.isRunning === false) {
+    message.respond({
+      returnValue: false,
+      data: 'tcpClientRequest : invalid',
+    });
+  } else {
+    const packet = createPacketCr2CmdGetWifi();
+    const req_id = packet.header.req_id;
+    tcpClientRequest.sendPacket(packet);
     // 응답 대기 (3초 타임아웃 내에 0.5초마다 확인)
     let checkInterval = setInterval(() => {
       const ackPacket = tcpClientRequest.receivedPackets.find(
@@ -1490,6 +1518,16 @@ function createPacketCr2CmdSetWifilist() {
   const packet = new RequestPacket(header, param);
   return packet;
 }
+function createPacketCr2CmdGetWifi() {
+  const param = null;
+  const header = new RequestHeader(
+    EyeMiniSdk.JSON_EVENT_CR2CMD,
+    EyeMiniSdk.CR2CMD_GET_WIFI,
+    0,
+  );
+  const packet = new RequestPacket(header, param);
+  return packet;
+}
 function createPacketCr2CmdGetWifilist() {
   const param = null;
   const header = new RequestHeader(
@@ -2316,4 +2354,210 @@ function wsSendMessage(msg) {
       }
     });
   }
+}
+
+let deviceSetWifiRunning = false; // set wifi 중복 시도 막음
+let deviceSetWifiState = EyeMiniSdk.DEVICE_SET_WIFI_STATE_READY;
+let deviceSetWifiStateTryCnt = 0;
+let deviceSetWifiInterval = null;
+
+let deviceSetWifiEncryption = 'on';
+let deviceSetWifiSsid = '';
+let deviceSetWifiPassword = '';
+let deviceSetWifiType = 1;
+
+service.register('device/setWifi', function (message) {
+  var encryption = 'on';
+  var ssid = '';
+  var password = '';
+  var type = 1;
+  if (message.payload) {
+    if ('encryption' in message.payload) {
+      encryption = message.payload.encryption;
+    }
+    if ('ssid' in message.payload) {
+      ssid = message.payload.ssid;
+    }
+    if ('password' in message.payload) {
+      password = message.payload.password;
+    }
+    if ('type' in message.payload) {
+      type = message.payload.type;
+    }
+  }
+  if (ssid === '') {
+    message.respond({
+      returnValue: false,
+      data: 'invalid ssid',
+    });
+    return;
+  }
+
+  deviceSetWifiEncryption = encryption;
+  deviceSetWifiSsid = ssid;
+  deviceSetWifiPassword = password;
+  deviceSetWifiType = type;
+
+  /*
+  // 기기 연결상태인지 확인
+  if(deviceConnectionState !== EyeMiniSdk.DEVICE_CONNECTION_STATE_CONNECTED){
+    message.respond({
+      returnValue: false,
+      data: 'deviceNotConnected',
+    });
+    return;
+  }
+  */
+
+  // 이미 SetWifi 시도중인 경우 중지
+  if (deviceSetWifiRunning) {
+    message.respond({
+      returnValue: false,
+      data: 'deviceSetWifiRunning',
+    });
+    return;
+  }
+
+  deviceSetWifiRunning = true;
+  if (deviceSetWifiInterval != null) {
+    clearInterval(deviceSetWifiInterval);
+  }
+
+  deviceSetWifiState = EyeMiniSdk.DEVICE_SET_WIFI_STATE_READY;
+  deviceSetWifiStateTryCnt = 0;
+
+  deviceSetWifiInterval = setInterval(function () {
+    checkDeviceSetWifi();
+  }, 500);
+
+  message.respond({
+    returnValue: true,
+    data: 'device/setWifi : Start',
+  });
+});
+
+function checkDeviceSetWifi() {
+  switch (deviceSetWifiState) {
+    case EyeMiniSdk.DEVICE_SET_WIFI_STATE_READY:
+      if (
+        tcpClientRequest != null &&
+        tcpClientNotify != null &&
+        tcpClientRequest.isRunning &&
+        tcpClientNotify.isRunning
+      ) {
+        // tcp set wifi 전송
+        const packet = createPacketCr2CmdSetWifi(
+          deviceSetWifiEncryption,
+          deviceSetWifiSsid,
+          deviceSetWifiPassword,
+          deviceSetWifiType,
+        );
+        const req_id = packet.header.req_id;
+        tcpClientRequest.sendPacket(packet);
+
+        deviceSetWifiState = EyeMiniSdk.DEVICE_SET_WIFI_STATE_CMD_SENT;
+        deviceSetWifiStateTryCnt = 0;
+
+        // 응답 대기
+        let checkInterval = setInterval(() => {
+          const ackPacket = tcpClientRequest.receivedPackets.find(
+            (p) => p.header.ack_id === req_id,
+          );
+          if (ackPacket) {
+            clearInterval(checkInterval);
+
+            if (ackPacket.header.status === 0) {
+              // SET_WIFI 응답 성공인 경우 udp 확인 시작
+              eyeminiDevices = [];
+              deviceSetWifiState =
+                EyeMiniSdk.DEVICE_SET_WIFI_STATE_UDP_SEARCHING;
+              deviceSetWifiStateTryCnt = 0;
+            } else {
+              deviceSetWifiRunning = false;
+              deviceSetWifiState = EyeMiniSdk.DEVICE_SET_WIFI_STATE_FAILED_CMD;
+            }
+          }
+
+          if (
+            deviceSetWifiState !== EyeMiniSdk.DEVICE_SET_WIFI_STATE_CMD_SENT
+          ) {
+            clearInterval(checkInterval);
+          }
+        }, 500);
+      } else {
+        deviceSetWifiStateTryCnt++;
+        // timeout
+        if (deviceSetWifiStateTryCnt > 10) {
+          //wsSendMessage(JSON.stringify({'device_set_wifi':false,'message':'DEVICE_SET_WIFI_STATE_FAILED_CMD'}));
+          deviceSetWifiRunning = false;
+          deviceSetWifiState = EyeMiniSdk.DEVICE_SET_WIFI_STATE_FAILED_CMD;
+        }
+      }
+      break;
+    case EyeMiniSdk.DEVICE_SET_WIFI_STATE_CMD_SENT:
+      deviceSetWifiStateTryCnt++;
+      // timeout
+      if (deviceSetWifiStateTryCnt > 10) {
+        //wsSendMessage(JSON.stringify({'device_set_wifi':false,'message':'DEVICE_SET_WIFI_STATE_FAILED_CMD'}));
+        deviceSetWifiRunning = false;
+        deviceSetWifiState = EyeMiniSdk.DEVICE_SET_WIFI_STATE_FAILED_CMD;
+      }
+      break;
+    case EyeMiniSdk.DEVICE_SET_WIFI_STATE_UDP_SEARCHING:
+      if (
+        deviceSetWifiStateTryCnt >
+        EyeMiniSdk.DEVICE_SET_WIFI_TIMEOUT_SEC * 2
+      ) {
+        // 다시 발견되지 않은 경우 (기기 ap모드 재설정 및 pw 재입력 필요)
+        deviceSetWifiRunning = false;
+        deviceSetWifiState = EyeMiniSdk.DEVICE_SET_WIFI_STATE_FAILED_NOT_FOUND;
+      } else {
+        if (udpClientRunning === false) {
+          startUdpClient();
+        }
+
+        // SET_WIFI 전송 직후엔 udp 기기 정보 무시
+        if (deviceSetWifiStateTryCnt < 4) {
+          eyeminiDevices = [];
+        }
+
+        // eyeminiDevices 배열에서 updated가 10초 이전인 항목들을 제거
+        const tenSecondsAgo = Date.now() - 10000;
+        eyeminiDevices = eyeminiDevices.filter(
+          (device) => device.updated >= tenSecondsAgo,
+        );
+
+        const existingIndex = eyeminiDevices.findIndex(
+          (device) => device.serialNumber === deviceConnectionSerialNumber,
+        );
+        if (existingIndex >= 0) {
+          // udp에서 기기 찾음
+          var device = eyeminiDevices[existingIndex];
+          if (device.networkInfo.interface === 'ap0') {
+            // 다시 발견되었는데 ap 연결인경우 (pw 실패나 네트워크 연결 이상 등으로 ap모드에서 바뀌지 않음)
+            deviceSetWifiRunning = false;
+            deviceSetWifiState =
+              EyeMiniSdk.DEVICE_SET_WIFI_STATE_FAILED_AP_MODE;
+          } else if (device.networkInfo.interface === 'wlan0') {
+            // wlan0 정상 연결된 경우
+            deviceSetWifiRunning = false;
+            deviceSetWifiState = EyeMiniSdk.DEVICE_SET_WIFI_STATE_SUCCESS;
+            wsSendMessage(
+              JSON.stringify({
+                device_set_wifi: true,
+                message: 'DEVICE_SET_WIFI_STATE_SUCCESS',
+              }),
+            );
+          }
+        }
+        deviceSetWifiStateTryCnt++;
+      }
+      break;
+    case EyeMiniSdk.DEVICE_SET_WIFI_STATE_SUCCESS:
+      break;
+
+    default:
+  }
+
+  wsSendMessage(JSON.stringify({ device_set_wifi_state: deviceSetWifiState }));
 }
